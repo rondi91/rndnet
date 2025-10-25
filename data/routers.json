@@ -4,6 +4,7 @@
         "ip_address": "192.168.88.1",
         "username": "admin",
         "password": "admin123",
-        "notes": "Router default untuk latihan."
+        "notes": "Router default untuk latihan.",
+        "is_pppoe_server": true
     }
 ]

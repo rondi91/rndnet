@@ -31,7 +31,14 @@ class RouterService
     /**
      * Menambahkan router baru setelah dilakukan validasi sederhana.
      */
-    public function addRouter(string $name, string $ipAddress, string $username, string $password, string $notes = ''): array
+    public function addRouter(
+        string $name,
+        string $ipAddress,
+        string $username,
+        string $password,
+        string $notes = '',
+        bool $isPppoeServer = false
+    ): array
     {
         $errors = [];
 
@@ -61,6 +68,7 @@ class RouterService
             'username' => $username,
             'password' => $password,
             'notes' => $notes,
+            'is_pppoe_server' => $isPppoeServer,
         ]);
 
         return ['success' => true];
@@ -84,5 +92,39 @@ class RouterService
             'success' => true,
             'data' => $result,
         ];
+    }
+
+    /**
+     * Mengumpulkan koneksi PPPoE aktif dari seluruh router yang ditandai
+     * sebagai server PPPoE.
+     */
+    public function getActivePppoeSessions(): array
+    {
+        $sessions = [];
+
+        foreach ($this->listRouters() as $router) {
+            // Lewati router yang tidak bertindak sebagai server PPPoE.
+            if (empty($router['is_pppoe_server'])) {
+                continue;
+            }
+
+            $client = new MikroTikClient($router['ip_address'], $router['username'], $router['password']);
+
+            if (!$client->connect()) {
+                // Jika tidak bisa terhubung, lanjutkan ke router berikutnya.
+                continue;
+            }
+
+            foreach ($client->getActivePppoeSessions() as $session) {
+                // Lengkapi data sesi dengan nama dan IP router agar tampil
+                // informatif di dashboard.
+                $sessions[] = array_merge($session, [
+                    'router_name' => $router['name'],
+                    'router_ip' => $router['ip_address'],
+                ]);
+            }
+        }
+
+        return $sessions;
     }
 }
