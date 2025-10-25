@@ -1,0 +1,16 @@
+[
+    {
+        "name": "Lab Router",
+        "ip_address": "192.168.88.1",
+        "username": "admin",
+        "password": "admin123",
+        "notes": "Router default untuk latihan."
+    },
+    {
+        "name": "coba",
+        "ip_address": "192.168.255.20",
+        "username": "rondi",
+        "password": "21184662",
+        "notes": "server"
+    }
+]
