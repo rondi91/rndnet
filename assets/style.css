@@ -1,0 +1,87 @@
+/*
+ * File CSS sederhana untuk memberikan tampilan yang rapi.
+ */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f2f2f7;
+    margin: 0;
+    padding: 0;
+}
+
+header {
+    background: linear-gradient(135deg, #0061ff, #60efff);
+    color: white;
+    padding: 24px;
+}
+
+.container {
+    max-width: 1080px;
+    margin: 32px auto;
+    background: white;
+    padding: 24px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+h1, h2 {
+    margin-top: 0;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+}
+
+table th, table td {
+    padding: 12px;
+    border-bottom: 1px solid #e6e6e6;
+    text-align: left;
+}
+
+table tr:hover {
+    background-color: #f9fbff;
+}
+
+button, .button {
+    background-color: #0061ff;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 16px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+form label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+
+form input, form textarea, form select {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 12px;
+    border-radius: 6px;
+    border: 1px solid #d0d0d0;
+}
+
+.alert {
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 16px;
+}
+
+.alert-success {
+    background-color: #ebf8f2;
+    border: 1px solid #2ecc71;
+    color: #1e7e45;
+}
+
+.alert-error {
+    background-color: #fdecea;
+    border: 1px solid #e74c3c;
+    color: #943126;
+}
