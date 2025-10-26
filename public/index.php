@@ -161,10 +161,10 @@ $routers = $routerService->listRouters();
         </div>
     </section>
 
-    <!-- Form tambahan untuk mencoba perintah CLI sederhana -->
+    <!-- Form tambahan untuk mencoba perintah CLI secara langsung melalui API -->
     <section class="card">
-        <h3>Simulasi Perintah RouterOS</h3>
-        <p>Gunakan formulir ini untuk mencoba perintah CLI sederhana dan melihat bagaimana respon mock dari <code>MikroTikClient</code>.</p>
+        <h3>Uji Perintah RouterOS</h3>
+        <p>Formulir ini mengirimkan perintah langsung ke router menggunakan API <code>evilfreelancer/routeros-api-php</code>. Pastikan kredensial dan akses API telah dikonfigurasi.</p>
         <form method="post">
             <input type="hidden" name="action" value="run_command">
 
@@ -185,7 +185,7 @@ $routers = $routerService->listRouters();
 
         <?php if ($commandResult): ?>
             <div class="alert alert-success" style="margin-top:16px;">
-                <h3>Hasil Simulasi:</h3>
+                <h3>Hasil Perintah:</h3>
                 <pre><?php echo htmlspecialchars(print_r($commandResult, true), ENT_QUOTES, 'UTF-8'); ?></pre>
             </div>
         <?php endif; ?>

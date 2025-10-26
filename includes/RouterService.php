@@ -79,27 +79,38 @@ class RouterService
             'is_pppoe_server' => $isPppoeServer,
         ]);
 
+        // Reset cache PPPoE agar data terbaru langsung terbaca.
+        $this->cachedPppoeData = null;
+
         return ['success' => true];
     }
 
     /**
-     * Mensimulasikan eksekusi perintah ke router dengan memanfaatkan
-     * MikroTikClient mock.
+     * Menjalankan perintah RouterOS menggunakan pustaka EvilFreelancer.
+     * Ketika koneksi gagal atau perintah tidak valid, informasi kesalahan
+     * akan dikembalikan agar dapat ditampilkan di antarmuka.
      */
     public function runCommand(array $router, string $command): array
     {
-        $client = new MikroTikClient($router['ip_address'], $router['username'], $router['password']);
+        $client = new MikroTikClient(
+            $router['ip_address'],
+            $router['username'],
+            $router['password']
+        );
 
-        if (!$client->connect()) {
-            return ['success' => false, 'message' => 'Gagal terhubung ke router.'];
+        try {
+            $result = $client->execute($command);
+
+            return [
+                'success' => true,
+                'data' => $result,
+            ];
+        } catch (\Throwable $exception) {
+            return [
+                'success' => false,
+                'message' => $exception->getMessage(),
+            ];
         }
-
-        $result = $client->execute($command);
-
-        return [
-            'success' => true,
-            'data' => $result,
-        ];
     }
 
     /**
@@ -167,18 +178,28 @@ class RouterService
                     'reachable' => false,
                     'sessions' => [],
                     'total_sessions' => 0,
+                    'error' => null,
                 ];
             }
 
             $client = new MikroTikClient($router['ip_address'], $router['username'], $router['password']);
 
-            $groupedSessions[$serverKey]['reachable'] = $client->connect();
+            if (!$client->connect()) {
+                $groupedSessions[$serverKey]['reachable'] = false;
+                $groupedSessions[$serverKey]['error'] = $client->getLastError();
 
-            if (!$groupedSessions[$serverKey]['reachable']) {
                 continue;
             }
 
-            foreach ($client->getActivePppoeSessions() as $session) {
+            $groupedSessions[$serverKey]['reachable'] = true;
+
+            $sessions = $client->getActivePppoeSessions();
+
+            if ($client->getLastError() !== null) {
+                $groupedSessions[$serverKey]['error'] = $client->getLastError();
+            }
+
+            foreach ($sessions as $session) {
                 $detailedSession = array_merge($session, [
                     'router_name' => $router['name'],
                     'router_ip' => $router['ip_address'],
@@ -199,4 +220,3 @@ class RouterService
         return $this->cachedPppoeData;
     }
 }
- 

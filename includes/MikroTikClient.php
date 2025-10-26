@@ -1,10 +1,21 @@
 
 <?php
+
+// Muat autoloader Composer jika tersedia agar pustaka RouterOS dapat
+// digunakan tanpa konfigurasi tambahan.
+$vendorAutoload = __DIR__ . '/../vendor/autoload.php';
+if (file_exists($vendorAutoload)) {
+    require_once $vendorAutoload;
+}
+
+use RouterOS\Client as RouterOSClient;
+use RouterOS\Query;
+
 /**
- * MikroTikClient adalah kelas tiruan (mock) yang meniru perilaku koneksi ke
- * RouterOS API. Kelas ini tidak benar-benar terhubung ke router, namun
- * memberikan gambaran bagaimana struktur kode PHP dapat dibangun ketika
- * ingin berkomunikasi dengan perangkat Mikrotik.
+ * MikroTikClient mengelola koneksi ke RouterOS API menggunakan pustaka
+ * `evilfreelancer/routeros-api-php`. Kelas ini menangani proses autentikasi,
+ * eksekusi perintah, serta pengambilan data PPPoE aktif dari perangkat
+ * Mikrotik yang telah diregistrasikan.
  */
 class MikroTikClient
 {
@@ -17,76 +28,213 @@ class MikroTikClient
     /** @var string $password Kata sandi RouterOS. */
     private string $password;
 
+    /** @var int $port Port API RouterOS. Nilai bawaan 8728. */
+    private int $port;
+
+    /** @var int $timeout Batas waktu koneksi dalam detik. */
+    private int $timeout;
+
+    /** @var RouterOSClient|null $client Instansi klien RouterOS aktif. */
+    private $client = null;
+
+    /** @var string|null $lastError Pesan kesalahan terakhir yang terjadi. */
+    private ?string $lastError = null;
+
     /**
-     * Konstruktor menyimpan data kredensial agar dapat digunakan ketika
-     * menjalankan metode lain seperti connect atau execute.
+     * Konstruktor menyimpan kredensial yang diperlukan untuk mengakses API
+     * RouterOS. Parameter port dan timeout bersifat opsional agar mudah
+     * disesuaikan sesuai kebutuhan jaringan.
      */
-    public function __construct(string $host, string $username, string $password)
+    public function __construct(string $host, string $username, string $password, int $port = 8728, int $timeout = 3)
     {
         $this->host = $host;
         $this->username = $username;
         $this->password = $password;
+        $this->port = $port;
+        $this->timeout = $timeout;
     }
 
     /**
-     * Metode connect di sini hanya mensimulasikan proses autentikasi ke
-     * perangkat Mikrotik.
+     * Menginisialisasi koneksi ke RouterOS. Ketika pustaka belum dipasang atau
+     * kredensial tidak valid, metode ini akan mengembalikan false dan menyimpan
+     * pesan kesalahan agar dapat ditampilkan ke pengguna.
      */
     public function connect(): bool
     {
-        // Dalam aplikasi nyata, Anda bisa menggunakan RouterOS PHP Client.
-        // Di contoh ini kita menganggap kredensial selalu benar.
-        return true;
+        if ($this->client !== null) {
+            return true;
+        }
+
+        if (!class_exists(RouterOSClient::class)) {
+            $this->lastError = 'Pustaka RouterOS belum terpasang. Jalankan `composer install` untuk mengunduh dependensi.';
+
+            return false;
+        }
+
+        try {
+            $this->client = new RouterOSClient([
+                'host' => $this->host,
+                'user' => $this->username,
+                'pass' => $this->password,
+                'port' => $this->port,
+                'timeout' => $this->timeout,
+            ]);
+
+            $this->lastError = null;
+
+            return true;
+        } catch (\Throwable $exception) {
+            $this->lastError = $exception->getMessage();
+            $this->client = null;
+
+            return false;
+        }
     }
 
     /**
-     * Metode execute mensimulasikan pengiriman perintah ke router dan
-     * mengembalikan data contoh.
+     * Mengambil pesan kesalahan terakhir ketika koneksi atau permintaan gagal.
+     */
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
+    }
+
+    /**
+     * Mengirimkan perintah RouterOS dengan memanfaatkan objek Query bawaan
+     * pustaka EvilFreelancer. Perintah dapat ditulis menggunakan format CLI
+     * (misal `/system resource print`) dan otomatis dinormalisasi menjadi
+     * format API.
+     *
+     * @throws RuntimeException Ketika koneksi ke router gagal dilakukan.
      */
     public function execute(string $command): array
     {
-        // Simulasi output. Dalam implementasi asli, Anda akan mengirimkan
-        // perintah ke API dan menerima hasil berupa array.
-        return [
-            'command' => $command,
-            'status' => 'success',
-            'response' => 'Perintah dijalankan pada router ' . $this->host,
-        ];
+        if (!$this->connect()) {
+            throw new RuntimeException($this->lastError ?? 'Gagal terhubung ke router.');
+        }
+
+        $query = $this->buildQueryFromCommand($command);
+
+        try {
+            $response = $this->client->query($query)->read();
+            $this->lastError = null;
+
+            return $response;
+        } catch (\Throwable $exception) {
+            $this->lastError = $exception->getMessage();
+
+            throw $exception;
+        }
     }
 
     /**
-     * Mengembalikan daftar koneksi PPPoE aktif dalam bentuk data contoh.
-     *
-     * Dalam implementasi nyata, Anda dapat menggunakan RouterOS API untuk
-     * menjalankan perintah `/ppp active print` dan memetakan hasilnya. Di sini
-     * kita membangun data statis yang deterministik berdasarkan alamat host
-     * agar tampilan dashboard tetap konsisten setiap kali halaman dimuat.
+     * Mengambil daftar koneksi PPPoE aktif dari router menggunakan perintah
+     * `/ppp/active/print`. Jika koneksi gagal, metode ini mengembalikan array
+     * kosong dan menyimpan pesan kesalahan terakhir.
      */
     public function getActivePppoeSessions(): array
     {
-        // Gunakan hash dari host agar setiap router memiliki nilai unik
-        // tanpa harus bergantung pada database atau API sungguhan.
-        $hash = md5($this->host);
+        if (!$this->connect()) {
+            return [];
+        }
 
-        $firstSegment = hexdec(substr($hash, 0, 2)) % 254 + 1;
-        $secondSegment = hexdec(substr($hash, 2, 2)) % 254 + 1;
-        $thirdSegment = hexdec(substr($hash, 4, 2)) % 254 + 1;
+        try {
+            $query = new Query('/ppp/active/print');
+            $response = $this->client->query($query)->read();
+            $this->lastError = null;
 
-        return [
-            [
-                'user' => 'cust-' . substr($hash, 0, 4),
-                'address' => sprintf('10.%d.%d.%d', $firstSegment, $secondSegment, $thirdSegment),
-                'service' => 'pppoe',
-                'uptime' => '01:23:45',
-                'host' => $this->host,
-            ],
-            [
-                'user' => 'vip-' . substr($hash, 4, 4),
-                'address' => sprintf('10.%d.%d.%d', $secondSegment, $thirdSegment, $firstSegment),
-                'service' => 'pppoe',
-                'uptime' => '12:34:56',
-                'host' => $this->host,
-            ],
-        ];
+            return array_map(static function (array $row): array {
+                return [
+                    'user' => $row['name'] ?? $row['user'] ?? '-',
+                    'address' => $row['address'] ?? '-',
+                    'service' => $row['service'] ?? '',
+                    'uptime' => $row['uptime'] ?? '',
+                    'caller_id' => $row['caller-id'] ?? '',
+                    'encoding' => $row['encoding'] ?? '',
+                ];
+            }, $response);
+        } catch (\Throwable $exception) {
+            $this->lastError = $exception->getMessage();
+
+            return [];
+        }
+    }
+
+    /**
+     * Mengonversi perintah CLI RouterOS menjadi format Query yang diterima
+     * pustaka EvilFreelancer.
+     */
+    private function buildQueryFromCommand(string $command): Query
+    {
+        $command = trim($command);
+
+        if ($command === '') {
+            throw new InvalidArgumentException('Perintah RouterOS tidak boleh kosong.');
+        }
+
+        $parts = preg_split('/\s+/', $command);
+        $parts = array_filter($parts, static fn (string $part): bool => $part !== '');
+
+        $pathSegments = [];
+        $equals = [];
+        $conditions = [];
+
+        foreach ($parts as $part) {
+            $prefix = $part[0] ?? '';
+
+            if ($prefix === '=') {
+                $equals[] = substr($part, 1);
+
+                continue;
+            }
+
+            if ($prefix === '?') {
+                $conditions[] = substr($part, 1);
+
+                continue;
+            }
+
+            $pathSegments[] = $part;
+        }
+
+        $path = implode('/', $pathSegments);
+
+        if ($path === '') {
+            throw new InvalidArgumentException('Perintah RouterOS tidak dikenal.');
+        }
+
+        if ($path[0] !== '/') {
+            $path = '/' . $path;
+        }
+
+        $query = new Query($path);
+
+        foreach ($equals as $expression) {
+            if ($expression === '') {
+                continue;
+            }
+
+            [$key, $value] = array_pad(explode('=', $expression, 2), 2, '');
+            if ($key === '') {
+                continue;
+            }
+
+            $query->equal($key, $value);
+        }
+
+        foreach ($conditions as $expression) {
+            if ($expression === '') {
+                continue;
+            }
+
+            [$key, $value] = array_pad(explode('=', $expression, 2), 2, '');
+            if ($key === '') {
+                continue;
+            }
+
+            $query->where($key, $value);
+        }
+
+        return $query;
     }
 }

@@ -11,6 +11,7 @@
         "ip_address": "192.168.9.1",
         "username": "rondi",
         "password": "21184662",
-        "notes": ""
+        "notes": "Router default untuk latihan.",
+        "is_pppoe_server": true
     }
 ]

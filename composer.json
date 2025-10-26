@@ -1,0 +1,12 @@
+
+{
+    "name": "rndnet/app",
+    "description": "Template dashboard MikroTik dengan integrasi RouterOS API",
+    "type": "project",
+    "require": {
+        "evilfreelancer/routeros-api-php": "^1.6.0"
+    },
+    "minimum-stability": "stable",
+    "license": "MIT"
+}
+ 

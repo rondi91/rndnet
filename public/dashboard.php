@@ -10,46 +10,14 @@ $routerService = new RouterService($repository);
 // Ambil data dasar yang akan ditampilkan pada dashboard.
 $routers = $routerService->listRouters();
 
-// Beberapa pengguna mungkin masih memiliki versi RouterService lama yang belum
-// menyediakan metode getActivePppoeSessions. Untuk menjaga kompatibilitas dan
-// menghindari fatal error, kita lakukan pengecekan sebelum memanggil metode
-// tersebut lalu menerapkan logika cadangan jika perlu.
-$pppoeSessions = [];
-
-if (method_exists($routerService, 'getActivePppoeSessions')) {
-    $pppoeSessions = $routerService->getActivePppoeSessions();
-} else {
-    require_once __DIR__ . '/../includes/MikroTikClient.php';
-
-    foreach ($routers as $router) {
-        if (empty($router['is_pppoe_server'])) {
-            continue;
-        }
-
-        $client = new MikroTikClient(
-            $router['ip_address'],
-            $router['username'],
-            $router['password']
-        );
-
-        if (!$client->connect()) {
-            continue;
-        }
-
-        foreach ($client->getActivePppoeSessions() as $session) {
-            $pppoeSessions[] = array_merge($session, [
-                'router_name' => $router['name'],
-                'router_ip' => $router['ip_address'],
-            ]);
-        }
-    }
-}
+$pppoeSessions = $routerService->getActivePppoeSessions();
+$pppoeServers = $routerService->getActivePppoeSessionsByRouter();
 
 $totalRouters = count($routers);
-$totalPppoeServers = count(array_filter($routers, static function (array $router): bool {
-    return !empty($router['is_pppoe_server']);
-}));
-$totalPppoeSessions = count($pppoeSessions);
+$totalPppoeServers = count($pppoeServers);
+$totalPppoeSessions = array_sum(array_map(static function (array $server): int {
+    return $server['total_sessions'] ?? 0;
+}, $pppoeServers));
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -91,43 +59,78 @@ $totalPppoeSessions = count($pppoeSessions);
             <div class="dashboard-card">
                 <h3>Aktif PPPoE</h3>
                 <p><strong><?php echo $totalPppoeSessions; ?></strong></p>
-                <small>Total koneksi PPPoE aktif yang sedang tersimulasi.</small>
+                <small>Total koneksi PPPoE aktif yang sedang terhubung.</small>
             </div>
         </div>
 
         <section class="dashboard-card" id="pppoe" style="margin-top: 24px;">
             <h2>Koneksi PPPoE Aktif</h2>
-            <p>Data di bawah merupakan hasil simulasi dari <code>MikroTikClient</code>. Gunakan struktur ini sebagai acuan sebelum menghubungkannya ke API asli.</p>
+            <p>Bagian ini mengambil data langsung dari RouterOS melalui API <code>evilfreelancer/routeros-api-php</code>.</p>
 
-            <?php if (empty($pppoeSessions)): ?>
-                <div class="alert alert-error">Belum ada server PPPoE yang ditambahkan. Silakan tambahkan melalui halaman utama.</div>
+            <?php if (empty($pppoeServers)): ?>
+                <div class="alert alert-error">Belum ada server PPPoE yang ditambahkan. Silakan registrasikan melalui halaman utama.</div>
             <?php else: ?>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Router</th>
-                            <th>Alamat IP</th>
-                            <th>Pengguna</th>
-                            <th>Alamat PPPoE</th>
-                            <th>Uptime</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($pppoeSessions as $session): ?>
-                            <tr>
-                                <td><?php echo htmlspecialchars($session['router_name'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td><?php echo htmlspecialchars($session['router_ip'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td><?php echo htmlspecialchars($session['user'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td><?php echo htmlspecialchars($session['address'], ENT_QUOTES, 'UTF-8'); ?></td>
-                                <td><?php echo htmlspecialchars($session['uptime'], ENT_QUOTES, 'UTF-8'); ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                <div class="pppoe-server-grid">
+                    <?php foreach ($pppoeServers as $server): ?>
+                        <article class="pppoe-server-card">
+                            <header class="pppoe-server-header">
+                                <div>
+                                    <h3><?php echo htmlspecialchars($server['router_name'], ENT_QUOTES, 'UTF-8'); ?></h3>
+                                    <p class="pppoe-server-meta">
+                                        <span>IP: <?php echo htmlspecialchars($server['router_ip'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <?php if (!empty($server['notes'])): ?>
+                                            <span>Catatan: <?php echo htmlspecialchars($server['notes'], ENT_QUOTES, 'UTF-8'); ?></span>
+                                        <?php endif; ?>
+                                    </p>
+                                </div>
+                                <div class="pppoe-server-stat">
+                                    <strong><?php echo (int) ($server['total_sessions'] ?? 0); ?></strong>
+                                    <span>Aktif</span>
+                                </div>
+                            </header>
+
+                            <?php if (empty($server['reachable'])): ?>
+                                <div class="alert alert-error">
+                                    Tidak dapat terhubung ke server PPPoE ini.
+                                    <?php if (!empty($server['error'])): ?>
+                                        <br><small><?php echo htmlspecialchars($server['error'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                    <?php endif; ?>
+                                </div>
+                            <?php elseif (!empty($server['error'])): ?>
+                                <div class="alert alert-error">
+                                    Terjadi kesalahan saat membaca data PPPoE.<br>
+                                    <small><?php echo htmlspecialchars($server['error'], ENT_QUOTES, 'UTF-8'); ?></small>
+                                </div>
+                            <?php elseif (empty($server['sessions'])): ?>
+                                <div class="alert alert-info">Belum ada koneksi PPPoE yang aktif saat ini.</div>
+                            <?php else: ?>
+                                <table class="pppoe-session-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Pengguna</th>
+                                            <th>Alamat PPPoE</th>
+                                            <th>Uptime</th>
+                                            <th>Caller ID</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($server['sessions'] as $session): ?>
+                                            <tr>
+                                                <td><?php echo htmlspecialchars($session['user'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                                <td><?php echo htmlspecialchars($session['address'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                                <td><?php echo htmlspecialchars($session['uptime'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                                <td><?php echo htmlspecialchars($session['caller_id'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            <?php endif; ?>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
             <?php endif; ?>
         </section>
     </section>
 </div>
 </body>
 </html>
- 

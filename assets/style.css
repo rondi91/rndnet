@@ -1,3 +1,9 @@
+diff --git a/assets/style.css b/assets/style.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..b193936f09fc6b3abe9657e220b0e695bc0c27ee
+--- /dev/null
+++ b/assets/style.css
+@@ -0,0 +1,276 @@
 /*
  * File CSS sederhana untuk memberikan tampilan yang rapi.
  */
@@ -84,6 +90,12 @@ form input, form textarea, form select {
     background-color: #fdecea;
     border: 1px solid #e74c3c;
     color: #943126;
+}
+
+.alert-info {
+    background-color: #e8f4fd;
+    border: 1px solid #3498db;
+    color: #1b4f72;
 }
 
 /* Tata letak halaman index */
@@ -191,4 +203,80 @@ form input, form textarea, form select {
 
 .dashboard-card h3 {
     margin-top: 0;
+}
+
+.pppoe-server-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.pppoe-server-card {
+    border: 1px solid #dbe4ff;
+    border-radius: 12px;
+    padding: 20px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.pppoe-server-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.pppoe-server-header h3 {
+    margin: 0;
+}
+
+.pppoe-server-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #475569;
+    font-size: 0.9rem;
+    margin: 8px 0 0;
+}
+
+.pppoe-server-stat {
+    background: #0b5fff;
+    color: white;
+    padding: 12px 16px;
+    border-radius: 10px;
+    text-align: center;
+    min-width: 72px;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.pppoe-server-stat strong {
+    display: block;
+    font-size: 1.8rem;
+    line-height: 1;
+}
+
+.pppoe-server-stat span {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+.pppoe-session-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.pppoe-session-table th,
+.pppoe-session-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+}
+
+.pppoe-session-table tr:last-child td {
+    border-bottom: none;
 }
