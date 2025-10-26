@@ -13,5 +13,13 @@
         "password": "21184662",
         "notes": "Router default untuk latihan.",
         "is_pppoe_server": true
+    },
+    {
+        "name": "gx42",
+        "ip_address": "172.16.30.8",
+        "username": "rondi",
+        "password": "21184662",
+        "notes": "AP.",
+        "is_pppoe_server": false
     }
 ]

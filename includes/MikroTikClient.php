@@ -147,10 +147,45 @@ class MikroTikClient
                 return [
                     'user' => $row['name'] ?? $row['user'] ?? '-',
                     'address' => $row['address'] ?? '-',
+                    'profile' => $row['profile'] ?? '',
                     'service' => $row['service'] ?? '',
                     'uptime' => $row['uptime'] ?? '',
                     'caller_id' => $row['caller-id'] ?? '',
                     'encoding' => $row['encoding'] ?? '',
+                ];
+            }, $response);
+        } catch (\Throwable $exception) {
+            $this->lastError = $exception->getMessage();
+
+            return [];
+        }
+    }
+
+    /**
+     * Mengambil seluruh PPPoE secret yang terdaftar pada router. Data ini
+     * diperlukan untuk mengetahui profil pengguna serta mendeteksi pengguna
+     * yang tidak sedang aktif.
+     */
+    public function getPppoeSecrets(): array
+    {
+        if (!$this->connect()) {
+            return [];
+        }
+
+        try {
+            $query = new Query('/ppp/secret/print');
+            $response = $this->client->query($query)->read();
+            $this->lastError = null;
+
+            return array_map(static function (array $row): array {
+                return [
+                    'name' => $row['name'] ?? '-',
+                    'profile' => $row['profile'] ?? '',
+                    'service' => $row['service'] ?? '',
+                    'caller_id' => $row['caller-id'] ?? '',
+                    'last_logged_out' => $row['last-logged-out'] ?? '',
+                    'comment' => $row['comment'] ?? '',
+                    'disabled' => isset($row['disabled']) ? filter_var($row['disabled'], FILTER_VALIDATE_BOOLEAN) : false,
                 ];
             }, $response);
         } catch (\Throwable $exception) {

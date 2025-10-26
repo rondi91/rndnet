@@ -1,9 +1,4 @@
-diff --git a/assets/style.css b/assets/style.css
-new file mode 100644
-index 0000000000000000000000000000000000000000..b193936f09fc6b3abe9657e220b0e695bc0c27ee
---- /dev/null
-++ b/assets/style.css
-@@ -0,0 +1,276 @@
+
 /*
  * File CSS sederhana untuk memberikan tampilan yang rapi.
  */
@@ -142,6 +137,33 @@ form input, form textarea, form select {
 .dashboard-layout {
     display: flex;
     min-height: 100vh;
+    position: relative;
+}
+
+.sidebar-toggle {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+    background: #0b5fff;
+    color: #fff;
+    font-size: 1.25rem;
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 20;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sidebar-toggle:hover,
+.sidebar-toggle:focus {
+    transform: scale(1.05);
+    box-shadow: 0 14px 30px rgba(11, 95, 255, 0.25);
 }
 
 .sidebar {
@@ -152,6 +174,21 @@ form input, form textarea, form select {
     display: flex;
     flex-direction: column;
     gap: 24px;
+    transition: width 0.3s ease, padding 0.3s ease;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.sidebar-collapsed .sidebar {
+    width: 0;
+    padding: 24px 0;
+    box-shadow: none;
+}
+
+.sidebar-collapsed .sidebar h2,
+.sidebar-collapsed .sidebar nav {
+    opacity: 0;
+    pointer-events: none;
 }
 
 .sidebar h2 {
@@ -205,22 +242,92 @@ form input, form textarea, form select {
     margin-top: 0;
 }
 
-.pppoe-server-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+.pppoe-management-card .section-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pppoe-controls {
+    display: flex;
+    flex-wrap: wrap;
     gap: 20px;
     margin-top: 20px;
 }
 
-.pppoe-server-card {
-    border: 1px solid #dbe4ff;
-    border-radius: 12px;
-    padding: 20px;
-    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+.pppoe-controls .control-group {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 6px;
+    min-width: 220px;
+}
+
+.pppoe-controls input,
+.pppoe-controls select {
+    border: 1px solid #cbd5f5;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.95rem;
+    background: #f8fbff;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pppoe-controls input:focus,
+.pppoe-controls select:focus {
+    outline: none;
+    border-color: #0b5fff;
+    box-shadow: 0 0 0 3px rgba(11, 95, 255, 0.18);
+}
+
+.pppoe-server-layout {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.pppoe-server-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    border-bottom: 1px solid #dbe4ff;
+    padding-bottom: 12px;
+}
+
+.pppoe-server-tab {
+    background: #eef2ff;
+    color: #1e293b;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 10px 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+.pppoe-server-tab.active {
+    background: #0b5fff;
+    color: #ffffff;
+    box-shadow: 0 10px 24px rgba(11, 95, 255, 0.35);
+}
+
+.pppoe-server-panels {
+    position: relative;
+}
+
+.pppoe-server-panel {
+    display: none;
+    border: 1px solid #dbe4ff;
+    border-radius: 16px;
+    padding: 24px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+    flex-direction: column;
+    gap: 20px;
+}
+
+.pppoe-server-panel.active {
+    display: flex;
 }
 
 .pppoe-server-header {
@@ -243,6 +350,11 @@ form input, form textarea, form select {
     margin: 8px 0 0;
 }
 
+.pppoe-server-stats {
+    display: flex;
+    gap: 12px;
+}
+
 .pppoe-server-stat {
     background: #0b5fff;
     color: white;
@@ -251,6 +363,12 @@ form input, form textarea, form select {
     text-align: center;
     min-width: 72px;
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.pppoe-server-stat.secondary {
+    background: #e2e8f0;
+    color: #1e293b;
+    box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.5);
 }
 
 .pppoe-server-stat strong {
@@ -265,6 +383,44 @@ form input, form textarea, form select {
     letter-spacing: 0.08em;
 }
 
+.pppoe-panel-tabs {
+    display: flex;
+    gap: 8px;
+    border-bottom: 1px solid #dbe4ff;
+    padding-bottom: 8px;
+}
+
+.pppoe-panel-tab {
+    background: transparent;
+    border: none;
+    padding: 10px 18px;
+    font-weight: 600;
+    color: #475569;
+    border-radius: 12px 12px 0 0;
+    cursor: pointer;
+    transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pppoe-panel-tab.active {
+    background: #ffffff;
+    color: #0b5fff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.pppoe-panel-views {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.pppoe-panel-view {
+    display: none;
+}
+
+.pppoe-panel-view.active {
+    display: block;
+}
+
 .pppoe-session-table {
     width: 100%;
     border-collapse: collapse;
@@ -277,6 +433,203 @@ form input, form textarea, form select {
     text-align: left;
 }
 
+.pppoe-session-table a {
+    color: #0b5fff;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.pppoe-session-table a:hover {
+    text-decoration: underline;
+}
+
 .pppoe-session-table tr:last-child td {
     border-bottom: none;
+}
+
+.sort-button {
+    background: none;
+    border: none;
+    color: #0f172a;
+    font: inherit;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 0;
+}
+
+.sort-button:focus-visible {
+    outline: 2px solid #0b5fff;
+    outline-offset: 2px;
+}
+
+.sort-button .sort-indicator::before {
+    content: '⇅';
+    font-size: 0.75rem;
+    color: #94a3b8;
+    transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.sort-button:hover .sort-indicator::before {
+    color: #0b5fff;
+}
+
+.sort-button.sorted {
+    color: #0b5fff;
+}
+
+.sort-button.sorted-asc .sort-indicator::before {
+    content: '▲';
+    color: #0b5fff;
+}
+
+.sort-button.sorted-desc .sort-indicator::before {
+    content: '▼';
+    color: #0b5fff;
+}
+
+.pppoe-delete-button {
+    background: #ef4444;
+    border: none;
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 6px 18px rgba(239, 68, 68, 0.25);
+}
+
+.pppoe-delete-button:hover {
+    background: #dc2626;
+}
+
+.pppoe-delete-button[disabled] {
+    background: #e2e8f0;
+    color: #64748b;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.pppoe-delete-button:focus-visible {
+    outline: 2px solid #f87171;
+    outline-offset: 2px;
+}
+
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.pagination-controls button {
+    background: #0b5fff;
+    color: #ffffff;
+    border: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(11, 95, 255, 0.25);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pagination-controls button[disabled] {
+    background: #cbd5f5;
+    color: #64748b;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.pagination-controls button:not([disabled]):hover,
+.pagination-controls button:not([disabled]):focus {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(11, 95, 255, 0.35);
+}
+
+.pagination-controls span {
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.pppoe-inactive-section {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.pppoe-inactive-section h4 {
+    margin: 0;
+}
+
+.pppoe-inactive-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.pppoe-inactive-table th,
+.pppoe-inactive-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+}
+
+.pppoe-inactive-table tr:last-child td {
+    border-bottom: none;
+}
+
+.alert-info.subtle {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+@media (max-width: 1024px) {
+    .sidebar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        z-index: 15;
+        box-shadow: 0 14px 32px rgba(2, 24, 71, 0.28);
+    }
+
+    .dashboard-content {
+        padding-top: 72px;
+    }
+}
+
+@media (max-width: 768px) {
+    .pppoe-controls {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .pppoe-server-tabs {
+        overflow-x: auto;
+        padding-bottom: 4px;
+    }
+
+    .pppoe-server-tab {
+        white-space: nowrap;
+    }
+
+    .pppoe-server-stats {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .pppoe-server-panel {
+        padding: 20px;
+    }
 }

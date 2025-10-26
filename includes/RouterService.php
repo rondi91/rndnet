@@ -137,6 +137,19 @@ class RouterService
     }
 
     /**
+     * Menghasilkan data lengkap untuk tampilan dashboard PPPoE.
+     */
+    public function getPppoeDashboardData(): array
+    {
+        $pppoeData = $this->collectPppoeSessions();
+
+        return [
+            'servers' => $pppoeData['grouped'],
+            'totals' => $pppoeData['totals'],
+        ];
+    }
+
+    /**
      * Menentukan apakah sebuah entri router bertindak sebagai server PPPoE.
      * Router lama mungkin belum memiliki properti `is_pppoe_server`, sehingga
      * secara default diasumsikan bertindak sebagai server agar data tetap
@@ -162,8 +175,12 @@ class RouterService
 
         $flatSessions = [];
         $groupedSessions = [];
+        $totalActiveSessions = 0;
+        $totalInactiveUsers = 0;
+        $routers = $this->listRouters();
+        $timestamp = date('c');
 
-        foreach ($this->listRouters() as $router) {
+        foreach ($routers as $router) {
             if (!$this->isPppoeServer($router)) {
                 continue;
             }
@@ -178,7 +195,11 @@ class RouterService
                     'reachable' => false,
                     'sessions' => [],
                     'total_sessions' => 0,
+                    'total_inactive' => 0,
+                    'inactive_users' => [],
                     'error' => null,
+                    'last_refreshed' => $timestamp,
+                    'generated_at' => $timestamp,
                 ];
             }
 
@@ -194,29 +215,139 @@ class RouterService
             $groupedSessions[$serverKey]['reachable'] = true;
 
             $sessions = $client->getActivePppoeSessions();
+            $secrets = $client->getPppoeSecrets();
 
             if ($client->getLastError() !== null) {
                 $groupedSessions[$serverKey]['error'] = $client->getLastError();
             }
 
-            foreach ($sessions as $session) {
-                $detailedSession = array_merge($session, [
-                    'router_name' => $router['name'],
-                    'router_ip' => $router['ip_address'],
-                ]);
+            $secretsByName = [];
+            foreach ($secrets as $secret) {
+                $secretsByName[$secret['name'] ?? ''] = $secret;
+            }
 
+            $activeUsers = [];
+
+            foreach ($sessions as $session) {
+                $detailedSession = $this->buildActivePppoeSession($router, $session, $secretsByName);
+
+                $activeUsers[$detailedSession['user']] = true;
                 $flatSessions[] = $detailedSession;
                 $groupedSessions[$serverKey]['sessions'][] = $detailedSession;
             }
 
+            foreach ($secrets as $secret) {
+                $username = $secret['name'] ?? '';
+
+                if ($username === '' || isset($activeUsers[$username])) {
+                    continue;
+                }
+
+                $inactiveUser = [
+                    'user' => $username,
+                    'profile' => $secret['profile'] ?? '',
+                    'service' => $secret['service'] ?? '',
+                    'disabled' => (bool) ($secret['disabled'] ?? false),
+                    'last_logged_out' => $secret['last_logged_out'] ?? '',
+                    'comment' => $secret['comment'] ?? '',
+                ];
+
+                $groupedSessions[$serverKey]['inactive_users'][] = $inactiveUser;
+            }
+
             $groupedSessions[$serverKey]['total_sessions'] = count($groupedSessions[$serverKey]['sessions']);
+            $groupedSessions[$serverKey]['total_inactive'] = count($groupedSessions[$serverKey]['inactive_users']);
+            $totalActiveSessions += $groupedSessions[$serverKey]['total_sessions'];
+            $totalInactiveUsers += $groupedSessions[$serverKey]['total_inactive'];
         }
 
         $this->cachedPppoeData = [
             'flat' => $flatSessions,
             'grouped' => array_values($groupedSessions),
+            'totals' => [
+                'routers' => count($routers),
+                'pppoe_servers' => count($groupedSessions),
+                'active_sessions' => $totalActiveSessions,
+                'inactive_users' => $totalInactiveUsers,
+                'generated_at' => $timestamp,
+            ],
         ];
 
         return $this->cachedPppoeData;
+    }
+
+    /**
+     * Membentuk struktur sesi PPPoE aktif yang dilengkapi dengan profil dan
+     * informasi pendukung lainnya.
+     */
+    private function buildActivePppoeSession(array $router, array $session, array $secretsByName): array
+    {
+        $username = $session['user'] ?? '-';
+        $profile = $session['profile'] ?? '';
+
+        if ($profile === '' && isset($secretsByName[$username])) {
+            $profile = $secretsByName[$username]['profile'] ?? '';
+        }
+
+        $uptime = $session['uptime'] ?? '';
+
+        return [
+            'router_name' => $router['name'],
+            'router_ip' => $router['ip_address'],
+            'user' => $username,
+            'profile' => $profile,
+            'address' => $session['address'] ?? '-',
+            'uptime' => $uptime,
+            'uptime_seconds' => $this->parseDurationToSeconds($uptime),
+            'caller_id' => $session['caller_id'] ?? '',
+            'service' => $session['service'] ?? '',
+        ];
+    }
+
+    /**
+     * Mengonversi format durasi RouterOS menjadi total detik agar proses
+     * penyortiran di sisi antarmuka lebih mudah dilakukan.
+     */
+    private function parseDurationToSeconds(string $duration): int
+    {
+        $duration = trim($duration);
+
+        if ($duration === '') {
+            return 0;
+        }
+
+        if (preg_match_all('/(\d+)([wdhms])/', $duration, $matches, PREG_SET_ORDER)) {
+            $seconds = 0;
+
+            foreach ($matches as $match) {
+                $value = (int) $match[1];
+
+                switch ($match[2]) {
+                    case 'w':
+                        $seconds += $value * 604800;
+                        break;
+                    case 'd':
+                        $seconds += $value * 86400;
+                        break;
+                    case 'h':
+                        $seconds += $value * 3600;
+                        break;
+                    case 'm':
+                        $seconds += $value * 60;
+                        break;
+                    case 's':
+                        $seconds += $value;
+                        break;
+                }
+            }
+
+            return $seconds;
+        }
+
+        if (preg_match('/^(\d+):(\d+):(\d+)$/', $duration, $matches)) {
+            return ((int) $matches[1] * 3600) + ((int) $matches[2] * 60) + (int) $matches[3];
+        }
+
+        return 0;
     }
 }
