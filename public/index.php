@@ -1,3 +1,4 @@
+
 <?php
 // Sertakan file yang dibutuhkan agar kelas dapat digunakan.
 require_once __DIR__ . '/../includes/RouterService.php';
@@ -22,9 +23,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $username = $_POST['username'] ?? '';
         $password = $_POST['password'] ?? '';
         $notes = $_POST['notes'] ?? '';
+        $isPppoeServer = isset($_POST['is_pppoe_server']) && $_POST['is_pppoe_server'] === '1';
 
         // Panggil service untuk menambah router.
-        $result = $routerService->addRouter($name, $ipAddress, $username, $password, $notes);
+        $result = $routerService->addRouter($name, $ipAddress, $username, $password, $notes, $isPppoeServer);
 
         if ($result['success']) {
             $successMessage = 'Router baru berhasil ditambahkan.';
@@ -71,10 +73,21 @@ $routers = $routerService->listRouters();
 </head>
 <body>
 <header>
-    <h1>Template Manajemen Mikrotik (Gaya Winbox)</h1>
-    <p>Gunakan halaman ini sebagai bahan belajar PHP, struktur folder, dan GitHub.</p>
+    <h1>Panel Registrasi Router MikroTik</h1>
+    <p>Gunakan halaman ini untuk menambahkan server router baru sebelum masuk ke dashboard monitoring.</p>
 </header>
 <main class="container">
+    <!-- Bagian judul form yang menjelaskan tujuan halaman -->
+    <div class="form-header">
+        <div>
+            <h2>Tambah Router</h2>
+            <p>Isikan kredensial router yang ingin Anda kelola. Router yang ditandai sebagai server PPPoE akan muncul pada menu PPPoE di dashboard.</p>
+        </div>
+        <div>
+            <a class="button" href="dashboard.php">Buka Dashboard</a>
+        </div>
+    </div>
+
     <?php if ($successMessage): ?>
         <div class="alert alert-success"><?php echo htmlspecialchars($successMessage, ENT_QUOTES, 'UTF-8'); ?></div>
     <?php endif; ?>
@@ -89,61 +102,69 @@ $routers = $routerService->listRouters();
         </div>
     <?php endif; ?>
 
-    <section>
-        <h2>Daftar Router</h2>
-        <p>Tabel ini menampilkan router yang telah disimpan di file <code>data/routers.json</code>.</p>
-        <table>
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Nama</th>
-                    <th>Alamat IP</th>
-                    <th>Username</th>
-                    <th>Catatan</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($routers as $index => $router): ?>
-                    <tr>
-                        <td><?php echo $index + 1; ?></td>
-                        <td><?php echo htmlspecialchars($router['name'], ENT_QUOTES, 'UTF-8'); ?></td>
-                        <td><?php echo htmlspecialchars($router['ip_address'], ENT_QUOTES, 'UTF-8'); ?></td>
-                        <td><?php echo htmlspecialchars($router['username'], ENT_QUOTES, 'UTF-8'); ?></td>
-                        <td><?php echo htmlspecialchars($router['notes'], ENT_QUOTES, 'UTF-8'); ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+    <!-- Tata letak dua kolom: form input dan daftar router -->
+    <section class="form-layout">
+        <div class="form-column">
+            <form method="post" class="card">
+                <input type="hidden" name="action" value="add_router">
+
+                <label for="name">Nama Router</label>
+                <input type="text" id="name" name="name" placeholder="Contoh: Router Kantor" required>
+
+                <label for="ip_address">Alamat IP</label>
+                <input type="text" id="ip_address" name="ip_address" placeholder="192.168.1.1" required>
+
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="admin" required>
+
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="*****" required>
+
+                <label for="notes">Catatan</label>
+                <textarea id="notes" name="notes" rows="3" placeholder="Catatan tambahan"></textarea>
+
+                <label class="checkbox">
+                    <input type="checkbox" name="is_pppoe_server" value="1">
+                    Jadikan router ini sebagai server PPPoE
+                </label>
+
+                <button type="submit">Simpan Router</button>
+            </form>
+        </div>
+        <div class="form-column">
+            <section class="card">
+                <h3>Daftar Router Tersimpan</h3>
+                <p>Router yang telah Anda tambahkan akan muncul di sini.</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Nama</th>
+                            <th>Alamat IP</th>
+                            <th>PPPoE</th>
+                            <th>Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($routers as $index => $router): ?>
+                            <tr>
+                                <td><?php echo $index + 1; ?></td>
+                                <td><?php echo htmlspecialchars($router['name'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?php echo htmlspecialchars($router['ip_address'], ENT_QUOTES, 'UTF-8'); ?></td>
+                                <td><?php echo !empty($router['is_pppoe_server']) ? 'Ya' : 'Tidak'; ?></td>
+                                <td><?php echo htmlspecialchars($router['notes'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </section>
+        </div>
     </section>
 
-    <section>
-        <h2>Tambah Router Baru</h2>
-        <p>Form ini meniru proses menambahkan sesi baru seperti pada Winbox.</p>
-        <form method="post">
-            <input type="hidden" name="action" value="add_router">
-
-            <label for="name">Nama Router</label>
-            <input type="text" id="name" name="name" placeholder="Contoh: Router Kantor">
-
-            <label for="ip_address">Alamat IP</label>
-            <input type="text" id="ip_address" name="ip_address" placeholder="192.168.1.1">
-
-            <label for="username">Username</label>
-            <input type="text" id="username" name="username" placeholder="admin">
-
-            <label for="password">Password</label>
-            <input type="password" id="password" name="password" placeholder="*****">
-
-            <label for="notes">Catatan</label>
-            <textarea id="notes" name="notes" rows="3" placeholder="Catatan tambahan"></textarea>
-
-            <button type="submit">Simpan Router</button>
-        </form>
-    </section>
-
-    <section>
-        <h2>Jalankan Perintah</h2>
-        <p>Pilih router dan tulis perintah RouterOS. Hasilnya akan disimulasikan oleh <code>MikroTikClient</code>.</p>
+    <!-- Form tambahan untuk mencoba perintah CLI sederhana -->
+    <section class="card">
+        <h3>Simulasi Perintah RouterOS</h3>
+        <p>Gunakan formulir ini untuk mencoba perintah CLI sederhana dan melihat bagaimana respon mock dari <code>MikroTikClient</code>.</p>
         <form method="post">
             <input type="hidden" name="action" value="run_command">
 

@@ -1,3 +1,4 @@
+
 <?php
 /**
  * MikroTikClient adalah kelas tiruan (mock) yang meniru perilaku koneksi ke
@@ -52,5 +53,40 @@ class MikroTikClient
             'response' => 'Perintah dijalankan pada router ' . $this->host,
         ];
     }
+
+    /**
+     * Mengembalikan daftar koneksi PPPoE aktif dalam bentuk data contoh.
+     *
+     * Dalam implementasi nyata, Anda dapat menggunakan RouterOS API untuk
+     * menjalankan perintah `/ppp active print` dan memetakan hasilnya. Di sini
+     * kita membangun data statis yang deterministik berdasarkan alamat host
+     * agar tampilan dashboard tetap konsisten setiap kali halaman dimuat.
+     */
+    public function getActivePppoeSessions(): array
+    {
+        // Gunakan hash dari host agar setiap router memiliki nilai unik
+        // tanpa harus bergantung pada database atau API sungguhan.
+        $hash = md5($this->host);
+
+        $firstSegment = hexdec(substr($hash, 0, 2)) % 254 + 1;
+        $secondSegment = hexdec(substr($hash, 2, 2)) % 254 + 1;
+        $thirdSegment = hexdec(substr($hash, 4, 2)) % 254 + 1;
+
+        return [
+            [
+                'user' => 'cust-' . substr($hash, 0, 4),
+                'address' => sprintf('10.%d.%d.%d', $firstSegment, $secondSegment, $thirdSegment),
+                'service' => 'pppoe',
+                'uptime' => '01:23:45',
+                'host' => $this->host,
+            ],
+            [
+                'user' => 'vip-' . substr($hash, 4, 4),
+                'address' => sprintf('10.%d.%d.%d', $secondSegment, $thirdSegment, $firstSegment),
+                'service' => 'pppoe',
+                'uptime' => '12:34:56',
+                'host' => $this->host,
+            ],
+        ];
+    }
 }
- 
