@@ -62,4 +62,18 @@ class RouterRepository
 
         $this->persist($routers);
     }
+
+    /**
+     * Mencari router berdasarkan alamat IP yang tersimpan.
+     */
+    public function findByIp(string $ipAddress): ?array
+    {
+        foreach ($this->all() as $router) {
+            if (($router['ip_address'] ?? '') === $ipAddress) {
+                return $router;
+            }
+        }
+
+        return null;
+    }
 }

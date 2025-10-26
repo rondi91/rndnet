@@ -37,6 +37,14 @@ class RouterService
     }
 
     /**
+     * Mengambil satu router berdasarkan alamat IP.
+     */
+    public function findRouterByIp(string $ipAddress): ?array
+    {
+        return $this->repository->findByIp($ipAddress);
+    }
+
+    /**
      * Menambahkan router baru setelah dilakukan validasi sederhana.
      */
     public function addRouter(
@@ -250,6 +258,7 @@ class RouterService
                     'disabled' => (bool) ($secret['disabled'] ?? false),
                     'last_logged_out' => $secret['last_logged_out'] ?? '',
                     'comment' => $secret['comment'] ?? '',
+                    'secret_id' => $secret['id'] ?? '',
                 ];
 
                 $groupedSessions[$serverKey]['inactive_users'][] = $inactiveUser;
@@ -291,6 +300,8 @@ class RouterService
 
         $uptime = $session['uptime'] ?? '';
 
+        $secretId = $secretsByName[$username]['id'] ?? '';
+
         return [
             'router_name' => $router['name'],
             'router_ip' => $router['ip_address'],
@@ -299,9 +310,54 @@ class RouterService
             'address' => $session['address'] ?? '-',
             'uptime' => $uptime,
             'uptime_seconds' => $this->parseDurationToSeconds($uptime),
-            'caller_id' => $session['caller_id'] ?? '',
             'service' => $session['service'] ?? '',
+            'secret_id' => $secretId,
         ];
+    }
+
+    /**
+     * Menghapus PPPoE secret pada router tertentu.
+     */
+    public function removePppoeSecret(string $routerIp, string $secretId): array
+    {
+        $router = $this->findRouterByIp($routerIp);
+
+        if ($router === null) {
+            return [
+                'success' => false,
+                'message' => 'Router tidak ditemukan.',
+            ];
+        }
+
+        $client = new MikroTikClient($router['ip_address'], $router['username'], $router['password']);
+
+        if (!$client->connect()) {
+            return [
+                'success' => false,
+                'message' => $client->getLastError() ?? 'Gagal terhubung ke router.',
+            ];
+        }
+
+        if ($secretId === '') {
+            return [
+                'success' => false,
+                'message' => 'ID secret PPPoE tidak valid.',
+            ];
+        }
+
+        $result = $client->removePppoeSecret($secretId);
+
+        if ($result === false) {
+            return [
+                'success' => false,
+                'message' => $client->getLastError() ?? 'Gagal menghapus secret PPPoE.',
+            ];
+        }
+
+        // Reset cache agar data terbaru terbaca pada permintaan berikutnya.
+        $this->cachedPppoeData = null;
+
+        return ['success' => true];
     }
 
     /**

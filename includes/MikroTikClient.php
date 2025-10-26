@@ -150,7 +150,6 @@ class MikroTikClient
                     'profile' => $row['profile'] ?? '',
                     'service' => $row['service'] ?? '',
                     'uptime' => $row['uptime'] ?? '',
-                    'caller_id' => $row['caller-id'] ?? '',
                     'encoding' => $row['encoding'] ?? '',
                 ];
             }, $response);
@@ -179,10 +178,10 @@ class MikroTikClient
 
             return array_map(static function (array $row): array {
                 return [
+                    'id' => $row['.id'] ?? '',
                     'name' => $row['name'] ?? '-',
                     'profile' => $row['profile'] ?? '',
                     'service' => $row['service'] ?? '',
-                    'caller_id' => $row['caller-id'] ?? '',
                     'last_logged_out' => $row['last-logged-out'] ?? '',
                     'comment' => $row['comment'] ?? '',
                     'disabled' => isset($row['disabled']) ? filter_var($row['disabled'], FILTER_VALIDATE_BOOLEAN) : false,
@@ -192,6 +191,30 @@ class MikroTikClient
             $this->lastError = $exception->getMessage();
 
             return [];
+        }
+    }
+
+    /**
+     * Menghapus PPPoE secret berdasarkan ID unik yang diberikan RouterOS.
+     */
+    public function removePppoeSecret(string $secretId): bool
+    {
+        if (!$this->connect()) {
+            return false;
+        }
+
+        try {
+            $query = (new Query('/ppp/secret/remove'))
+                ->equal('.id', $secretId);
+
+            $this->client->query($query)->read();
+            $this->lastError = null;
+
+            return true;
+        } catch (\Throwable $exception) {
+            $this->lastError = $exception->getMessage();
+
+            return false;
         }
     }
 

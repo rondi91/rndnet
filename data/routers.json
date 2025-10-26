@@ -1,13 +1,13 @@
 [
     {
-        "name": "coba",
+        "name": "SERVER 2 255.26",
         "ip_address": "192.168.255.26",
         "username": "rondi",
         "password": "21184662",
         "notes": "server"
     },
     {
-        "name": "gx4",
+        "name": "SERVER 1 9.1",
         "ip_address": "192.168.9.1",
         "username": "rondi",
         "password": "21184662",
