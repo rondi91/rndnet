@@ -205,6 +205,7 @@ class RouterService
                     'total_sessions' => 0,
                     'total_inactive' => 0,
                     'inactive_users' => [],
+                    'profiles' => [],
                     'error' => null,
                     'last_refreshed' => $timestamp,
                     'generated_at' => $timestamp,
@@ -235,25 +236,75 @@ class RouterService
             }
 
             $activeUsers = [];
+            $activeSessionsByUser = [];
 
             foreach ($sessions as $session) {
                 $detailedSession = $this->buildActivePppoeSession($router, $session, $secretsByName);
 
                 $activeUsers[$detailedSession['user']] = true;
+                $activeSessionsByUser[$detailedSession['user']] = $detailedSession;
                 $flatSessions[] = $detailedSession;
                 $groupedSessions[$serverKey]['sessions'][] = $detailedSession;
             }
 
+            $profilesByName = [];
+
+            $ensureProfile = static function (string $profileName) use (&$profilesByName): void {
+                if (array_key_exists($profileName, $profilesByName)) {
+                    return;
+                }
+
+                $label = trim($profileName) !== '' ? $profileName : 'Tanpa Profil';
+
+                $profilesByName[$profileName] = [
+                    'profile' => $profileName,
+                    'name' => $label,
+                    'total_users' => 0,
+                    'active_count' => 0,
+                    'inactive_count' => 0,
+                    'users' => [],
+                ];
+            };
+
             foreach ($secrets as $secret) {
                 $username = $secret['name'] ?? '';
+                $profileKey = $secret['profile'] ?? '';
 
-                if ($username === '' || isset($activeUsers[$username])) {
+                if ($username === '') {
+                    continue;
+                }
+
+                $ensureProfile($profileKey);
+
+                if (isset($activeUsers[$username])) {
+                    $sessionData = $activeSessionsByUser[$username] ?? null;
+
+                    $userData = [
+                        'user' => $username,
+                        'profile' => $profileKey,
+                        'service' => $secret['service'] ?? '',
+                        'disabled' => (bool) ($secret['disabled'] ?? false),
+                        'last_logged_out' => $secret['last_logged_out'] ?? '',
+                        'comment' => $secret['comment'] ?? '',
+                        'secret_id' => $secret['id'] ?? '',
+                        'status' => 'active',
+                        'address' => $sessionData['address'] ?? '-',
+                        'uptime' => $sessionData['uptime'] ?? '',
+                        'uptime_seconds' => $sessionData['uptime_seconds'] ?? 0,
+                    ];
+
+                    $profilesByName[$profileKey]['users'][] = $userData;
+                    $profilesByName[$profileKey]['total_users']++;
+                    $profilesByName[$profileKey]['active_count']++;
+
+                    unset($activeSessionsByUser[$username]);
+
                     continue;
                 }
 
                 $inactiveUser = [
                     'user' => $username,
-                    'profile' => $secret['profile'] ?? '',
+                    'profile' => $profileKey,
                     'service' => $secret['service'] ?? '',
                     'disabled' => (bool) ($secret['disabled'] ?? false),
                     'last_logged_out' => $secret['last_logged_out'] ?? '',
@@ -262,7 +313,57 @@ class RouterService
                 ];
 
                 $groupedSessions[$serverKey]['inactive_users'][] = $inactiveUser;
+
+                $profilesByName[$profileKey]['users'][] = $inactiveUser + [
+                    'status' => 'inactive',
+                    'address' => '-',
+                    'uptime' => '',
+                    'uptime_seconds' => 0,
+                ];
+                $profilesByName[$profileKey]['total_users']++;
+                $profilesByName[$profileKey]['inactive_count']++;
             }
+
+            foreach ($activeSessionsByUser as $sessionData) {
+                $profileName = $sessionData['profile'] ?? '';
+
+                $ensureProfile($profileName);
+
+                $profilesByName[$profileName]['users'][] = [
+                    'user' => $sessionData['user'],
+                    'profile' => $profileName,
+                    'service' => $sessionData['service'] ?? '',
+                    'disabled' => (bool) ($sessionData['disabled'] ?? false),
+                    'last_logged_out' => $sessionData['last_logged_out'] ?? '',
+                    'comment' => $sessionData['comment'] ?? '',
+                    'secret_id' => $sessionData['secret_id'] ?? '',
+                    'status' => 'active',
+                    'address' => $sessionData['address'] ?? '-',
+                    'uptime' => $sessionData['uptime'] ?? '',
+                    'uptime_seconds' => $sessionData['uptime_seconds'] ?? 0,
+                ];
+                $profilesByName[$profileName]['total_users']++;
+                $profilesByName[$profileName]['active_count']++;
+            }
+
+            foreach ($profilesByName as $profileKey => &$profileSummary) {
+                usort($profileSummary['users'], static function (array $a, array $b): int {
+                    return strcasecmp($a['user'] ?? '', $b['user'] ?? '');
+                });
+
+                // Pastikan nilai status berada pada format yang konsisten.
+                foreach ($profileSummary['users'] as &$user) {
+                    $user['status'] = $user['status'] ?? 'inactive';
+                }
+                unset($user);
+            }
+            unset($profileSummary);
+
+            uasort($profilesByName, static function (array $a, array $b): int {
+                return strcasecmp($a['name'] ?? '', $b['name'] ?? '');
+            });
+
+            $groupedSessions[$serverKey]['profiles'] = array_values($profilesByName);
 
             $groupedSessions[$serverKey]['total_sessions'] = count($groupedSessions[$serverKey]['sessions']);
             $groupedSessions[$serverKey]['total_inactive'] = count($groupedSessions[$serverKey]['inactive_users']);
@@ -300,7 +401,12 @@ class RouterService
 
         $uptime = $session['uptime'] ?? '';
 
-        $secretId = $secretsByName[$username]['id'] ?? '';
+        $secret = $secretsByName[$username] ?? [];
+        $secretId = $secret['id'] ?? '';
+
+        $disabled = (bool) ($secret['disabled'] ?? false);
+        $lastLoggedOut = $secret['last_logged_out'] ?? '';
+        $comment = $secret['comment'] ?? '';
 
         return [
             'router_name' => $router['name'],
@@ -312,6 +418,10 @@ class RouterService
             'uptime_seconds' => $this->parseDurationToSeconds($uptime),
             'service' => $session['service'] ?? '',
             'secret_id' => $secretId,
+            'disabled' => $disabled,
+            'last_logged_out' => $lastLoggedOut,
+            'comment' => $comment,
+            'status' => 'active',
         ];
     }
 

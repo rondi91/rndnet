@@ -1,3 +1,4 @@
+
 <?php
 // Sertakan service agar data router dapat digunakan pada dashboard.
 require_once __DIR__ . '/../includes/RouterService.php';
@@ -16,6 +17,102 @@ $totalRouters = count($routers);
 $totalPppoeServers = $pppoeTotals['pppoe_servers'] ?? count($pppoeServers);
 $totalPppoeSessions = $pppoeTotals['active_sessions'] ?? 0;
 $totalInactiveUsers = $pppoeTotals['inactive_users'] ?? 0;
+
+$renderProfileDetail = static function (array $profile): string {
+    $profileName = $profile['name'] ?? ($profile['profile'] ?? 'Tanpa Profil');
+    $profileNameEscaped = htmlspecialchars($profileName, ENT_QUOTES, 'UTF-8');
+    $totalUsers = (int) ($profile['total_users'] ?? 0);
+    $activeCount = (int) ($profile['active_count'] ?? 0);
+    $inactiveCount = (int) ($profile['inactive_count'] ?? 0);
+    $users = is_array($profile['users'] ?? null) ? $profile['users'] : [];
+
+    ob_start();
+    ?>
+    <header class="pppoe-profile-header">
+        <h3>Profil: <?php echo $profileNameEscaped; ?></h3>
+        <p>
+            Total pengguna: <strong><?php echo $totalUsers; ?></strong>
+            &bull; Aktif: <strong><?php echo $activeCount; ?></strong>
+            &bull; Tidak Aktif: <strong><?php echo $inactiveCount; ?></strong>
+        </p>
+    </header>
+    <?php if (empty($users)): ?>
+        <div class="alert alert-info subtle">Belum ada pengguna pada profil ini.</div>
+    <?php else: ?>
+        <table class="pppoe-profile-table" data-profile-table>
+            <thead>
+                <tr>
+                    <th>Pengguna</th>
+                    <th>Status</th>
+                    <th>Alamat PPPoE</th>
+                    <th>Uptime</th>
+                    <th>Terakhir Logout</th>
+                    <th>Keterangan</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($users as $user): ?>
+                <?php
+                $username = $user['user'] ?? '';
+                $status = $user['status'] ?? 'inactive';
+                $statusLabel = $status === 'active' ? 'Aktif' : 'Tidak Aktif';
+
+                if (!empty($user['disabled'])) {
+                    $statusLabel .= ' (Disabled)';
+                }
+
+                $address = $user['address'] ?? '';
+                $addressUrl = filter_var($address, FILTER_VALIDATE_IP) ? 'http://' . $address : null;
+                $uptime = $user['uptime'] ?? '';
+                $lastLoggedOut = $user['last_logged_out'] ?? '';
+                $comment = $user['comment'] ?? '';
+                $secretId = $user['secret_id'] ?? '';
+                ?>
+                <tr class="pppoe-profile-row"
+                    data-user="<?php echo htmlspecialchars(mb_strtolower($username, 'UTF-8'), ENT_QUOTES, 'UTF-8'); ?>"
+                    data-profile="<?php echo htmlspecialchars(mb_strtolower($profile['profile'] ?? '', 'UTF-8'), ENT_QUOTES, 'UTF-8'); ?>"
+                    data-address="<?php echo htmlspecialchars(mb_strtolower($address, 'UTF-8'), ENT_QUOTES, 'UTF-8'); ?>"
+                    data-status="<?php echo htmlspecialchars(mb_strtolower($status, 'UTF-8'), ENT_QUOTES, 'UTF-8'); ?>"
+                    data-secret-id="<?php echo htmlspecialchars($secretId, ENT_QUOTES, 'UTF-8'); ?>"
+                >
+                    <td><?php echo htmlspecialchars($username, ENT_QUOTES, 'UTF-8'); ?></td>
+                    <td>
+                        <span class="status-pill <?php echo $status === 'active' ? 'status-active' : 'status-inactive'; ?>">
+                            <?php echo htmlspecialchars($statusLabel, ENT_QUOTES, 'UTF-8'); ?>
+                        </span>
+                    </td>
+                    <td>
+                        <?php if ($addressUrl !== null): ?>
+                            <a href="<?php echo htmlspecialchars($addressUrl, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer">
+                                <?php echo htmlspecialchars($address, ENT_QUOTES, 'UTF-8'); ?>
+                            </a>
+                        <?php else: ?>
+                            <?php echo htmlspecialchars($address !== '' ? $address : '-', ENT_QUOTES, 'UTF-8'); ?>
+                        <?php endif; ?>
+                    </td>
+                    <td><?php echo htmlspecialchars($uptime !== '' ? $uptime : '-', ENT_QUOTES, 'UTF-8'); ?></td>
+                    <td><?php echo htmlspecialchars($lastLoggedOut !== '' ? $lastLoggedOut : '-', ENT_QUOTES, 'UTF-8'); ?></td>
+                    <td><?php echo htmlspecialchars($comment !== '' ? $comment : '-', ENT_QUOTES, 'UTF-8'); ?></td>
+                    <td>
+                        <button
+                            type="button"
+                            class="pppoe-delete-button"
+                            data-secret-id="<?php echo htmlspecialchars($secretId, ENT_QUOTES, 'UTF-8'); ?>"
+                            <?php echo $secretId === '' ? 'disabled title="Secret tidak ditemukan"' : ''; ?>
+                        >
+                            Hapus
+                        </button>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+    <?php
+
+    return (string) ob_get_clean();
+};
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -123,11 +220,17 @@ $totalInactiveUsers = $pppoeTotals['inactive_users'] ?? 0;
                             $tabId = 'pppoe-server-' . $index;
                             $isActive = $index === 0;
                             ?>
+                            <?php
+                            $profiles = is_array($server['profiles'] ?? null) ? $server['profiles'] : [];
+                            $profilesJson = htmlspecialchars(json_encode($profiles, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES, 'UTF-8');
+                            ?>
                             <article
                                 class="pppoe-server-panel<?php echo $isActive ? ' active' : ''; ?>"
                                 id="<?php echo htmlspecialchars($tabId, ENT_QUOTES, 'UTF-8'); ?>"
                                 role="tabpanel"
                                 data-router-ip="<?php echo htmlspecialchars($server['router_ip'], ENT_QUOTES, 'UTF-8'); ?>"
+                                data-profiles="<?php echo $profilesJson; ?>"
+                                data-active-profile="0"
                                 aria-hidden="<?php echo $isActive ? 'false' : 'true'; ?>"
                             >
                                 <header class="pppoe-server-header">
@@ -173,6 +276,7 @@ $totalInactiveUsers = $pppoeTotals['inactive_users'] ?? 0;
                                     <div class="pppoe-panel-tabs" role="tablist">
                                         <button type="button" class="pppoe-panel-tab active" data-panel-tab="active" aria-selected="true">Aktif</button>
                                         <button type="button" class="pppoe-panel-tab" data-panel-tab="inactive" aria-selected="false">Tidak Aktif</button>
+                                        <button type="button" class="pppoe-panel-tab" data-panel-tab="profiles" aria-selected="false">Profil</button>
                                     </div>
 
                                     <div class="pppoe-panel-views">
@@ -264,22 +368,68 @@ $totalInactiveUsers = $pppoeTotals['inactive_users'] ?? 0;
                                                             <th>Status</th>
                                                             <th>Terakhir Logout</th>
                                                             <th>Keterangan</th>
+                                                            <th>Aksi</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         <?php foreach ($server['inactive_users'] as $inactive): ?>
                                                             <tr class="pppoe-inactive-row"
                                                                 data-user="<?php echo htmlspecialchars(mb_strtolower($inactive['user'] ?? '', 'UTF-8'), ENT_QUOTES, 'UTF-8'); ?>"
-                                                                data-profile="<?php echo htmlspecialchars(mb_strtolower($inactive['profile'] ?? '', 'UTF-8'), ENT_QUOTES, 'UTF-8'); ?>">
+                                                                data-profile="<?php echo htmlspecialchars(mb_strtolower($inactive['profile'] ?? '', 'UTF-8'), ENT_QUOTES, 'UTF-8'); ?>"
+                                                                data-secret-id="<?php echo htmlspecialchars($inactive['secret_id'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                                                                 <td><?php echo htmlspecialchars($inactive['user'], ENT_QUOTES, 'UTF-8'); ?></td>
                                                                 <td><?php echo htmlspecialchars($inactive['profile'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
                                                                 <td><?php echo !empty($inactive['disabled']) ? 'Disabled' : 'Enabled'; ?></td>
                                                                 <td><?php echo htmlspecialchars($inactive['last_logged_out'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></td>
                                                                 <td><?php echo htmlspecialchars($inactive['comment'] ?? '-', ENT_QUOTES, 'UTF-8'); ?></td>
+                                                                <td>
+                                                                    <?php $inactiveSecretId = $inactive['secret_id'] ?? ''; ?>
+                                                                    <button
+                                                                        type="button"
+                                                                        class="pppoe-delete-button"
+                                                                        data-secret-id="<?php echo htmlspecialchars($inactiveSecretId, ENT_QUOTES, 'UTF-8'); ?>"
+                                                                        <?php echo $inactiveSecretId === '' ? 'disabled title="Secret tidak ditemukan"' : ''; ?>
+                                                                    >
+                                                                        Hapus
+                                                                    </button>
+                                                                </td>
                                                             </tr>
                                                         <?php endforeach; ?>
                                                     </tbody>
                                                 </table>
+                                            <?php endif; ?>
+                                        </div>
+
+                                        <div class="pppoe-panel-view" data-panel-view="profiles" aria-hidden="true">
+                                            <?php if (empty($profiles)): ?>
+                                                <div class="alert alert-info subtle">Belum ada profil PPPoE yang dapat ditampilkan.</div>
+                                            <?php else: ?>
+                                                <div class="pppoe-profile-view" data-profile-container>
+                                                    <div class="pppoe-profile-menu" data-profile-menu>
+                                                        <?php foreach ($profiles as $profileIndex => $profile): ?>
+                                                            <?php
+                                                            $profileLabel = $profile['name'] ?? ($profile['profile'] ?? 'Tanpa Profil');
+                                                            $profileTotal = (int) ($profile['total_users'] ?? 0);
+                                                            $profileActive = (int) ($profile['active_count'] ?? 0);
+                                                            $profileInactive = (int) ($profile['inactive_count'] ?? 0);
+                                                            $isProfileActive = $profileIndex === 0;
+                                                            ?>
+                                                            <button
+                                                                type="button"
+                                                                class="pppoe-profile-tab<?php echo $isProfileActive ? ' active' : ''; ?>"
+                                                                data-profile-index="<?php echo (int) $profileIndex; ?>"
+                                                                aria-selected="<?php echo $isProfileActive ? 'true' : 'false'; ?>"
+                                                            >
+                                                                <span class="profile-tab-name"><?php echo htmlspecialchars($profileLabel, ENT_QUOTES, 'UTF-8'); ?></span>
+                                                                <span class="profile-tab-count"><?php echo $profileTotal; ?> pengguna</span>
+                                                                <span class="profile-tab-meta">Aktif: <?php echo $profileActive; ?> • Tidak Aktif: <?php echo $profileInactive; ?></span>
+                                                            </button>
+                                                        <?php endforeach; ?>
+                                                    </div>
+                                                    <div class="pppoe-profile-detail" data-profile-detail>
+                                                        <?php echo $renderProfileDetail($profiles[0]); ?>
+                                                    </div>
+                                                </div>
                                             <?php endif; ?>
                                         </div>
                                     </div>
@@ -397,19 +547,169 @@ document.addEventListener('DOMContentLoaded', () => {
             const status = user.disabled ? 'Disabled' : 'Enabled';
             const lastLoggedOut = escapeHtml(user.last_logged_out ?? '-');
             const comment = escapeHtml(user.comment ?? '-');
+            const secretId = escapeHtml(user.secret_id ?? '');
+            const buttonDisabled = secretId === '' ? ' disabled title="Secret tidak ditemukan"' : '';
 
             return `
                 <tr class="pppoe-inactive-row"
                     data-user="${normalize(user.user)}"
-                    data-profile="${normalize(user.profile)}">
+                    data-profile="${normalize(user.profile)}"
+                    data-secret-id="${secretId}">
                     <td>${name}</td>
                     <td>${profile}</td>
                     <td>${status}</td>
                     <td>${lastLoggedOut}</td>
                     <td>${comment}</td>
+                    <td>
+                        <button type="button" class="pppoe-delete-button" data-secret-id="${secretId}"${buttonDisabled}>Hapus</button>
+                    </td>
                 </tr>
             `;
         }).join('');
+    };
+
+    const buildProfileRows = (users = []) => {
+        if (!Array.isArray(users) || !users.length) {
+            return '';
+        }
+
+        return users.map((user) => {
+            const rawUsername = String(user.user ?? '');
+            const rawProfile = String(user.profile ?? '');
+            const statusValue = String(user.status ?? 'inactive').toLowerCase();
+            const statusLabel = statusValue === 'active' ? 'Aktif' : 'Tidak Aktif';
+            const disabled = Boolean(user.disabled);
+            const rawAddress = String(user.address ?? '');
+            const rawUptime = String(user.uptime ?? '');
+            const rawLastLoggedOut = String(user.last_logged_out ?? '');
+            const rawComment = String(user.comment ?? '');
+            const rawSecretId = String(user.secret_id ?? '');
+
+            const username = escapeHtml(rawUsername);
+            const address = escapeHtml(rawAddress);
+            const uptime = escapeHtml(rawUptime);
+            const lastLoggedOut = escapeHtml(rawLastLoggedOut);
+            const comment = escapeHtml(rawComment);
+            const secretId = escapeHtml(rawSecretId);
+
+            const addressUrl = rawAddress && /^(?:\d{1,3}\.){3}\d{1,3}$/.test(rawAddress)
+                ? `http://${escapeHtml(rawAddress)}`
+                : null;
+            const buttonDisabled = secretId === '' ? ' disabled title="Secret tidak ditemukan"' : '';
+            const statusText = disabled ? `${statusLabel} (Disabled)` : statusLabel;
+            const statusClass = statusValue === 'active' ? 'status-active' : 'status-inactive';
+
+            return `
+                <tr class="pppoe-profile-row"
+                    data-user="${normalize(rawUsername)}"
+                    data-profile="${normalize(rawProfile)}"
+                    data-address="${normalize(rawAddress)}"
+                    data-status="${normalize(statusValue)}"
+                    data-secret-id="${secretId}"
+                >
+                    <td>${username}</td>
+                    <td><span class="status-pill ${statusClass}">${statusText}</span></td>
+                    <td>${addressUrl ? `<a href="${addressUrl}" target="_blank" rel="noopener noreferrer">${address}</a>` : (address || '-')}</td>
+                    <td>${uptime || '-'}</td>
+                    <td>${lastLoggedOut || '-'}</td>
+                    <td>${comment || '-'}</td>
+                    <td>
+                        <button type="button" class="pppoe-delete-button" data-secret-id="${secretId}"${buttonDisabled}>Hapus</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    };
+
+    const buildProfileDetailHtml = (profile = null) => {
+        if (!profile) {
+            return '<div class="alert alert-info subtle">Pilih salah satu profil PPPoE untuk melihat pengguna.</div>';
+        }
+
+        const name = escapeHtml(profile.name ?? profile.profile ?? 'Tanpa Profil');
+        const totalUsers = Number(profile.total_users ?? 0);
+        const activeCount = Number(profile.active_count ?? 0);
+        const inactiveCount = Number(profile.inactive_count ?? 0);
+        const users = Array.isArray(profile.users) ? profile.users : [];
+
+        const summary = `
+            <header class="pppoe-profile-header">
+                <h3>Profil: ${name}</h3>
+                <p>
+                    Total pengguna: <strong>${totalUsers}</strong>
+                    &bull; Aktif: <strong>${activeCount}</strong>
+                    &bull; Tidak Aktif: <strong>${inactiveCount}</strong>
+                </p>
+            </header>
+        `;
+
+        if (!users.length) {
+            return `${summary}<div class="alert alert-info subtle">Belum ada pengguna pada profil ini.</div>`;
+        }
+
+        return `
+            ${summary}
+            <table class="pppoe-profile-table" data-profile-table>
+                <thead>
+                    <tr>
+                        <th>Pengguna</th>
+                        <th>Status</th>
+                        <th>Alamat PPPoE</th>
+                        <th>Uptime</th>
+                        <th>Terakhir Logout</th>
+                        <th>Keterangan</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${buildProfileRows(users)}
+                </tbody>
+            </table>
+        `;
+    };
+
+    const buildProfileMenuHtml = (profiles = []) => {
+        if (!Array.isArray(profiles) || !profiles.length) {
+            return '';
+        }
+
+        return profiles.map((profile, index) => {
+            const isActiveProfile = index === 0;
+            const name = escapeHtml(profile.name ?? profile.profile ?? 'Tanpa Profil');
+            const totalUsers = Number(profile.total_users ?? 0);
+            const activeCount = Number(profile.active_count ?? 0);
+            const inactiveCount = Number(profile.inactive_count ?? 0);
+
+            return `
+                <button
+                    type="button"
+                    class="pppoe-profile-tab${isActiveProfile ? ' active' : ''}"
+                    data-profile-index="${index}"
+                    aria-selected="${isActiveProfile ? 'true' : 'false'}"
+                >
+                    <span class="profile-tab-name">${name}</span>
+                    <span class="profile-tab-count">${totalUsers} pengguna</span>
+                    <span class="profile-tab-meta">Aktif: ${activeCount} • Tidak Aktif: ${inactiveCount}</span>
+                </button>
+            `;
+        }).join('');
+    };
+
+    const buildProfilesView = (profiles = []) => {
+        if (!Array.isArray(profiles) || !profiles.length) {
+            return '<div class="alert alert-info subtle">Belum ada profil PPPoE yang dapat ditampilkan.</div>';
+        }
+
+        return `
+            <div class="pppoe-profile-view" data-profile-container>
+                <div class="pppoe-profile-menu" data-profile-menu>
+                    ${buildProfileMenuHtml(profiles)}
+                </div>
+                <div class="pppoe-profile-detail" data-profile-detail>
+                    ${buildProfileDetailHtml(profiles[0])}
+                </div>
+            </div>
+        `;
     };
 
     const buildServerTab = (server, index) => {
@@ -442,8 +742,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const errorMessage = escapeHtml(server.error ?? '');
         const sessions = Array.isArray(server.sessions) ? server.sessions : [];
         const inactiveUsers = Array.isArray(server.inactive_users) ? server.inactive_users : [];
+        const profiles = Array.isArray(server.profiles) ? server.profiles : [];
         const tabId = `pppoe-server-${index}`;
         const isActive = index === 0;
+        const profilesJson = escapeHtml(JSON.stringify(profiles));
 
         const activeContent = sessions.length
             ? `
@@ -494,6 +796,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th>Status</th>
                             <th>Terakhir Logout</th>
                             <th>Keterangan</th>
+                            <th>Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -502,6 +805,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 </table>
             `
             : '<div class="alert alert-info subtle">Belum ada pengguna yang terdeteksi tidak aktif.</div>';
+
+        const profilesContent = buildProfilesView(profiles);
 
         const unreachableBlock = !reachable
             ? `
@@ -527,6 +832,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="pppoe-panel-tabs" role="tablist">
                     <button type="button" class="pppoe-panel-tab active" data-panel-tab="active" aria-selected="true">Aktif</button>
                     <button type="button" class="pppoe-panel-tab" data-panel-tab="inactive" aria-selected="false">Tidak Aktif</button>
+                    <button type="button" class="pppoe-panel-tab" data-panel-tab="profiles" aria-selected="false">Profil</button>
                 </div>
                 <div class="pppoe-panel-views">
                     <div class="pppoe-panel-view active" data-panel-view="active" aria-hidden="false">
@@ -534,6 +840,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="pppoe-panel-view" data-panel-view="inactive" aria-hidden="true">
                         ${inactiveContent}
+                    </div>
+                    <div class="pppoe-panel-view" data-panel-view="profiles" aria-hidden="true">
+                        ${profilesContent}
                     </div>
                 </div>
             `
@@ -545,6 +854,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 id="${tabId}"
                 role="tabpanel"
                 data-router-ip="${routerIp}"
+                data-profiles="${profilesJson}"
+                data-active-profile="0"
                 aria-hidden="${isActive ? 'false' : 'true'}"
             >
                 <header class="pppoe-server-header">
@@ -570,6 +881,89 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${reachableContent || ''}
             </article>
         `;
+    };
+
+    const parseProfiles = (panel) => {
+        if (!panel) {
+            return [];
+        }
+
+        try {
+            const payload = panel.dataset.profiles || '[]';
+
+            return JSON.parse(payload);
+        } catch (error) {
+            return [];
+        }
+    };
+
+    const setActiveProfile = (panel, profiles, index = 0) => {
+        if (!panel) {
+            return;
+        }
+
+        const detail = panel.querySelector('[data-profile-detail]');
+        const menu = panel.querySelector('[data-profile-menu]');
+
+        if (!detail || !menu) {
+            return;
+        }
+
+        const safeIndex = Number.isInteger(index) ? index : 0;
+        const targetProfile = profiles[safeIndex] ?? null;
+
+        detail.innerHTML = buildProfileDetailHtml(targetProfile);
+
+        menu.querySelectorAll('.pppoe-profile-tab').forEach((tab) => {
+            const tabIndex = Number(tab.dataset.profileIndex || 0);
+            const isActiveTab = tabIndex === safeIndex;
+
+            tab.classList.toggle('active', isActiveTab);
+            tab.setAttribute('aria-selected', isActiveTab ? 'true' : 'false');
+        });
+
+        panel.dataset.activeProfile = String(safeIndex);
+
+        Promise.resolve().then(() => {
+            if (typeof applySearch === 'function') {
+                applySearch(searchTerm);
+            }
+        });
+    };
+
+    const setupProfileSection = (panel) => {
+        if (!panel) {
+            return;
+        }
+
+        const profiles = parseProfiles(panel);
+        const container = panel.querySelector('[data-profile-container]');
+        const menu = panel.querySelector('[data-profile-menu]');
+        const detail = panel.querySelector('[data-profile-detail]');
+
+        if (!container || !menu || !detail) {
+            panel.dataset.activeProfile = '0';
+
+            return;
+        }
+
+        menu.innerHTML = buildProfileMenuHtml(profiles);
+
+        const initialIndex = Number(panel.dataset.activeProfile || 0);
+        setActiveProfile(panel, profiles, Number.isFinite(initialIndex) ? initialIndex : 0);
+
+        menu.addEventListener('click', (event) => {
+            const button = event.target.closest('.pppoe-profile-tab');
+
+            if (!button) {
+                return;
+            }
+
+            event.preventDefault();
+
+            const nextIndex = Number(button.dataset.profileIndex || 0);
+            setActiveProfile(panel, profiles, Number.isFinite(nextIndex) ? nextIndex : 0);
+        });
     };
 
     const applyPagination = (table, requestedPage = 1) => {
@@ -680,6 +1074,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (table) {
                         applyPagination(table, Number(table.dataset.currentPage || 1));
                     }
+                } else if (target === 'profiles') {
+                    applySearch(searchTerm);
                 }
             });
         });
@@ -731,6 +1127,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         panels.forEach((panel) => {
+            setupProfileSection(panel);
             setupPanelTabs(panel);
             setupPagination(panel);
             setupSorting(panel);
@@ -751,9 +1148,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const previousActive = container.dataset.activeServer || '';
+        const previousProfiles = new Map();
+
+        panelList.querySelectorAll('.pppoe-server-panel').forEach((panel) => {
+            const routerIpValue = panel.dataset.routerIp || '';
+
+            if (routerIpValue) {
+                previousProfiles.set(routerIpValue, panel.dataset.activeProfile || '0');
+            }
+        });
 
         tabList.innerHTML = servers.map((server, index) => buildServerTab(server, index)).join('');
         panelList.innerHTML = servers.map((server, index) => buildServerPanel(server, index)).join('');
+
+        panelList.querySelectorAll('.pppoe-server-panel').forEach((panel) => {
+            const routerIpValue = panel.dataset.routerIp || '';
+
+            if (routerIpValue && previousProfiles.has(routerIpValue)) {
+                panel.dataset.activeProfile = previousProfiles.get(routerIpValue) || '0';
+            }
+        });
 
         if (previousActive) {
             container.dataset.activeServer = previousActive;
@@ -777,7 +1191,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const panels = panelList.querySelectorAll('.pppoe-server-panel');
         panels.forEach((panel) => {
-            const rows = panel.querySelectorAll('.pppoe-session-row, .pppoe-inactive-row');
+            const rows = panel.querySelectorAll('.pppoe-session-row, .pppoe-inactive-row, .pppoe-profile-row');
 
             rows.forEach((row) => {
                 if (!keyword) {
@@ -786,7 +1200,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                const combined = [row.dataset.user, row.dataset.profile, row.dataset.address]
+                const combined = [row.dataset.user, row.dataset.profile, row.dataset.address, row.dataset.status]
                     .filter(Boolean)
                     .join(' ');
 
