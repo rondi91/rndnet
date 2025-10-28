@@ -222,6 +222,8 @@ class MikroTikClient
                 $txBytes = $this->parseIntegerField($row['tx-byte'] ?? 0);
                 $rxPackets = $this->parseIntegerField($row['rx-packet'] ?? 0);
                 $txPackets = $this->parseIntegerField($row['tx-packet'] ?? 0);
+                $rawSpeed = $row['speed'] ?? null;
+                $speedMbps = $this->parseInterfaceSpeedMbps($rawSpeed);
 
                 $monitor = $this->fetchInterfaceMonitorStats($name);
                 $rxBps = $monitor['rx_bps'] ?? $this->parseBitsPerSecondValue($row['rx-rate'] ?? 0);
@@ -250,7 +252,10 @@ class MikroTikClient
                     'tx_mbps' => round($txBps / 1_000_000, 2),
                     'monitor_timestamp' => $monitor['timestamp'] ?? null,
                     'monitor_error' => $monitor['error'] ?? null,
-                    'if_speed' => $row['speed'] ?? null,
+                    'if_speed' => $rawSpeed !== null ? trim((string) $rawSpeed) : null,
+                    'if_speed_mbps' => $speedMbps,
+                    'link_capacity_mbps' => $speedMbps,
+                    'if_speed_bps' => $speedMbps !== null ? (int) round($speedMbps * 1_000_000) : null,
                     'comment' => $row['comment'] ?? '',
                 ];
             }
@@ -416,6 +421,39 @@ class MikroTikClient
         }
 
         return (int) round($numeric * $multiplier);
+    }
+
+    /**
+     * Mengonversi informasi kapasitas interface (mis. "1Gbps") menjadi Mbps.
+     */
+    private function parseInterfaceSpeedMbps($value): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_numeric($value)) {
+            $numeric = (float) $value;
+
+            if ($numeric <= 0) {
+                return null;
+            }
+
+            // Nilai yang besar diasumsikan masih dalam bps lalu dikonversi ke Mbps.
+            if ($numeric > 10_000) {
+                return round($numeric / 1_000_000, 2);
+            }
+
+            return round($numeric, 2);
+        }
+
+        $bps = $this->parseBitsPerSecondValue($value);
+
+        if ($bps <= 0) {
+            return null;
+        }
+
+        return round($bps / 1_000_000, 2);
     }
 
     /**

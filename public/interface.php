@@ -220,6 +220,53 @@ document.addEventListener('DOMContentLoaded', () => {
         return Number.isFinite(numeric) ? numeric : 0;
     };
 
+    const getInterfaceCapacityMbps = (iface, router) => {
+        if (!iface) {
+            const routerLevel = parseNumber(router?.link_capacity_mbps);
+
+            return routerLevel > 0 ? routerLevel : null;
+        }
+
+        const numericCandidates = [
+            parseNumber(iface.if_speed_mbps),
+            parseNumber(iface.link_capacity_mbps),
+        ];
+
+        for (const candidate of numericCandidates) {
+            if (Number.isFinite(candidate) && candidate > 0) {
+                return candidate;
+            }
+        }
+
+        const routerLevel = parseNumber(router?.link_capacity_mbps);
+
+        if (Number.isFinite(routerLevel) && routerLevel > 0) {
+            return routerLevel;
+        }
+
+        const bpsCandidates = [
+            parseNumber(iface.if_speed_bps),
+        ];
+
+        for (const candidate of bpsCandidates) {
+            if (Number.isFinite(candidate) && candidate > 0) {
+                return candidate / 1_000_000;
+            }
+        }
+
+        const labelCandidates = [iface.if_speed, iface.link_capacity];
+
+        for (const label of labelCandidates) {
+            const parsed = parseRateValue(label);
+
+            if (Number.isFinite(parsed) && parsed > 0) {
+                return parsed / 1_000_000;
+            }
+        }
+
+        return null;
+    };
+
     const parseRateValue = (value) => {
         if (typeof value === 'number' && Number.isFinite(value)) {
             return value;
@@ -387,13 +434,32 @@ document.addEventListener('DOMContentLoaded', () => {
         return Math.max(2, Math.min(100, percent));
     };
 
-    const buildTrafficBar = (variant, percent) => {
+    const determineRateLevel = (mbps) => {
+        if (!Number.isFinite(mbps) || mbps < 0) {
+            return 'low';
+        }
+
+        if (mbps >= 100) {
+            return 'high';
+        }
+
+        if (mbps >= 50) {
+            return 'medium';
+        }
+
+        return 'low';
+    };
+
+    const buildTrafficBar = (variant, percent, level) => {
         const clampedPercent = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
+        const levelSuffix = level ? ` router-bar--level-${escapeHtml(level)}` : '';
+        const progressLevelSuffix = level ? ` router-bar-progress--level-${escapeHtml(level)}` : '';
+        const trackLevelSuffix = level ? ` router-bar-track--level-${escapeHtml(level)}` : '';
 
         return `
-            <div class="router-bar router-bar--${escapeHtml(variant)}">
-                <div class="router-bar-track">
-                    <span class="router-bar-progress router-bar-progress--${escapeHtml(variant)}" style="width: ${clampedPercent}%"></span>
+            <div class="router-bar router-bar--${escapeHtml(variant)}${levelSuffix}">
+                <div class="router-bar-track${trackLevelSuffix}">
+                    <span class="router-bar-progress router-bar-progress--${escapeHtml(variant)}${progressLevelSuffix}" style="width: ${clampedPercent}%"></span>
                 </div>
             </div>
         `;
@@ -566,30 +632,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const throughputRx = selectedInterface ? parseRateValue(selectedInterface.rx_rate) : 0;
         const throughputTx = selectedInterface ? parseRateValue(selectedInterface.tx_rate) : 0;
+        const throughputRxMbps = throughputRx / 1_000_000;
+        const throughputTxMbps = throughputTx / 1_000_000;
         const maxInterfaceRate = availableInterfaces.reduce((max, item) => {
             const rxValue = parseRateValue(item.rx_rate);
             const txValue = parseRateValue(item.tx_rate);
 
             return Math.max(max, rxValue, txValue);
         }, 0);
-        const rxBaseline = Math.max(getHistoryPeak(routerKey, selectedName, 'rx'), maxInterfaceRate, throughputRx);
-        const txBaseline = Math.max(getHistoryPeak(routerKey, selectedName, 'tx'), maxInterfaceRate, throughputTx);
+        const interfaceCapacityMbps = getInterfaceCapacityMbps(selectedInterface, router);
+        const interfaceCapacityBps = Number.isFinite(interfaceCapacityMbps) && interfaceCapacityMbps > 0
+            ? interfaceCapacityMbps * 1_000_000
+            : null;
+        const rxBaseline = Number.isFinite(interfaceCapacityBps) && interfaceCapacityBps > 0
+            ? interfaceCapacityBps
+            : Math.max(getHistoryPeak(routerKey, selectedName, 'rx'), maxInterfaceRate, throughputRx);
+        const txBaseline = Number.isFinite(interfaceCapacityBps) && interfaceCapacityBps > 0
+            ? interfaceCapacityBps
+            : Math.max(getHistoryPeak(routerKey, selectedName, 'tx'), maxInterfaceRate, throughputTx);
         const rxPercent = computeRatePercent(throughputRx, rxBaseline);
         const txPercent = computeRatePercent(throughputTx, txBaseline);
+        const rxLevel = determineRateLevel(throughputRxMbps);
+        const txLevel = determineRateLevel(throughputTxMbps);
+        const capacityAttr = Number.isFinite(interfaceCapacityMbps) && interfaceCapacityMbps > 0
+            ? ` data-capacity-mbps="${escapeHtml(interfaceCapacityMbps.toFixed(2))}"`
+            : '';
+        const rxLabel = `RX ${escapeHtml(formatRate(selectedInterface?.rx_rate))}`;
+        const txLabel = `TX ${escapeHtml(formatRate(selectedInterface?.tx_rate))}`;
 
         const statusClass = selectedInterface ? (statusClassMap[selectedInterface.status] || 'status-chip--warning') : 'status-chip--muted';
         const metricsHtml = selectedInterface
             ? `
-                <div class="router-row-metrics" data-interface-name="${escapeHtml(selectedInterface.name)}">
+                <div class="router-row-metrics" data-interface-name="${escapeHtml(selectedInterface.name)}"${capacityAttr}>
                     <div class="router-row-interface-label">Interface: ${escapeHtml(selectedInterface.name)}</div>
                     <div class="router-row-bars">
-                        <div class="router-row-bar-line router-row-bar-line--rx">
-                            <span class="router-row-bar-label router-row-bar-label--rx">RX ${escapeHtml(formatRate(selectedInterface.rx_rate))}</span>
-                            ${buildTrafficBar('rx', rxPercent)}
+                        <div class="router-row-bar-line router-row-bar-line--rx router-row-bar-line--level-${escapeHtml(rxLevel)}">
+                            <span class="router-row-bar-label router-row-bar-label--rx router-row-bar-label--level-${escapeHtml(rxLevel)}">${rxLabel}</span>
+                            ${buildTrafficBar('rx', rxPercent, rxLevel)}
                         </div>
-                        <div class="router-row-bar-line router-row-bar-line--tx">
-                            <span class="router-row-bar-label router-row-bar-label--tx">TX ${escapeHtml(formatRate(selectedInterface.tx_rate))}</span>
-                            ${buildTrafficBar('tx', txPercent)}
+                        <div class="router-row-bar-line router-row-bar-line--tx router-row-bar-line--level-${escapeHtml(txLevel)}">
+                            <span class="router-row-bar-label router-row-bar-label--tx router-row-bar-label--level-${escapeHtml(txLevel)}">${txLabel}</span>
+                            ${buildTrafficBar('tx', txPercent, txLevel)}
                         </div>
                     </div>
                 </div>

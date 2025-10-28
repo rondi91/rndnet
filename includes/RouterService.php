@@ -275,6 +275,7 @@ class RouterService
                     'client_key' => $router['client_key'] ?? null,
                     'preferred_interface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
                     'iface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
+                    'link_capacity_mbps' => null,
                 ];
 
                 continue;
@@ -303,6 +304,10 @@ class RouterService
                 'client_key' => $router['client_key'] ?? null,
                 'preferred_interface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
                 'iface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
+                'link_capacity_mbps' => $this->extractInterfaceCapacityMbps(
+                    $interfaces,
+                    $router['preferred_interface'] ?? ($router['iface'] ?? '')
+                ),
             ];
         }
 
@@ -671,6 +676,141 @@ class RouterService
             'total_clients' => count($clients),
             'clients' => $clients,
         ];
+    }
+
+    /**
+     * Mengambil kapasitas interface yang paling relevan untuk sebuah router.
+     */
+    private function extractInterfaceCapacityMbps(array $interfaces, string $preferredName = ''): ?float
+    {
+        $preferredName = trim($preferredName);
+
+        if ($preferredName !== '') {
+            foreach ($interfaces as $interface) {
+                if (strcasecmp((string) ($interface['name'] ?? ''), $preferredName) === 0) {
+                    $capacity = $this->normaliseInterfaceCapacityMbps($interface);
+
+                    if ($capacity !== null) {
+                        return $capacity;
+                    }
+                }
+            }
+        }
+
+        foreach ($interfaces as $interface) {
+            $capacity = $this->normaliseInterfaceCapacityMbps($interface);
+
+            if ($capacity !== null) {
+                return $capacity;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Membersihkan nilai kapasitas interface menjadi angka Mbps.
+     */
+    private function normaliseInterfaceCapacityMbps(array $interface): ?float
+    {
+        $candidates = [
+            $interface['if_speed_mbps'] ?? null,
+            $interface['link_capacity_mbps'] ?? null,
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_numeric($candidate)) {
+                $numeric = (float) $candidate;
+
+                if ($numeric > 0) {
+                    return round($numeric, 2);
+                }
+            }
+        }
+
+        $bpsCandidates = [
+            $interface['if_speed_bps'] ?? null,
+        ];
+
+        foreach ($bpsCandidates as $candidate) {
+            if (is_numeric($candidate)) {
+                $numeric = (float) $candidate;
+
+                if ($numeric > 0) {
+                    return round($numeric / 1_000_000, 2);
+                }
+            }
+        }
+
+        if (!empty($interface['if_speed'])) {
+            $parsed = $this->parseCapacityLabelToMbps($interface['if_speed']);
+
+            if ($parsed !== null) {
+                return $parsed;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Mengonversi string kapasitas RouterOS (mis. "1Gbps") menjadi Mbps.
+     */
+    private function parseCapacityLabelToMbps($value): ?float
+    {
+        if (is_numeric($value)) {
+            $numeric = (float) $value;
+
+            if ($numeric <= 0) {
+                return null;
+            }
+
+            // Angka besar dianggap bps dan diubah ke Mbps.
+            if ($numeric > 10_000) {
+                return round($numeric / 1_000_000, 2);
+            }
+
+            return round($numeric, 2);
+        }
+
+        $text = trim((string) $value);
+
+        if ($text === '') {
+            return null;
+        }
+
+        if (!preg_match('/([\d.,]+)/', $text, $matches)) {
+            return null;
+        }
+
+        $numeric = (float) str_replace(',', '.', $matches[1]);
+
+        if ($numeric <= 0) {
+            return null;
+        }
+
+        $lower = strtolower($text);
+        $multiplier = 1_000_000; // default Mbps
+
+        if (strpos($lower, 'tbps') !== false || strpos($lower, 'tbit') !== false || preg_match('/t$/', $lower)) {
+            $multiplier = 1_000_000_000_000;
+        } elseif (strpos($lower, 'gbps') !== false || strpos($lower, 'gbit') !== false || preg_match('/g$/', $lower)) {
+            $multiplier = 1_000_000_000;
+        } elseif (strpos($lower, 'mbps') !== false || strpos($lower, 'mbit') !== false || preg_match('/m$/', $lower)) {
+            $multiplier = 1_000_000;
+        } elseif (strpos($lower, 'kbps') !== false || strpos($lower, 'kbit') !== false || preg_match('/k$/', $lower)) {
+            $multiplier = 1_000;
+        } elseif (strpos($lower, 'bps') !== false || strpos($lower, 'bit') !== false) {
+            $multiplier = 1;
+        }
+
+        $bps = $numeric * $multiplier;
+
+        if ($bps <= 0) {
+            return null;
+        }
+
+        return round($bps / 1_000_000, 2);
     }
 
     private function normaliseRouterClientKey(array $data): string
