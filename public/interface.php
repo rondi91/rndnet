@@ -38,11 +38,17 @@ $trafficData = $service->getEthernetTrafficByRouter();
             <div class="interface-actions">
                 <label class="refresh-interval" for="refresh-interval">Interval</label>
                 <select id="refresh-interval" data-refresh-interval>
-                    <option value="5000">5s</option>
+                    <option value="1000">1s</option>
+                    <option value="3000">3s</option>
+                    <option value="5000" selected>5s</option>
                     <option value="10000">10s</option>
-                    <option value="15000" selected>15s</option>
+                    <option value="15000">15s</option>
                     <option value="30000">30s</option>
                 </select>
+                <label class="manual-scale-control">
+                    <span>Skala manual (Mbps)</span>
+                    <input type="number" min="1" step="1" inputmode="decimal" placeholder="Auto" data-scale-input>
+                </label>
                 <button class="button" type="button" data-open-client-modal>+ Tambah Router AP</button>
                 <button class="refresh-button" type="button" data-refresh-interfaces>Muat Ulang Data</button>
             </div>
@@ -52,6 +58,7 @@ $trafficData = $service->getEthernetTrafficByRouter();
             <div class="interface-meta-item" data-interface-summary>
                 <!-- Ringkasan akan dimuat oleh JavaScript -->
             </div>
+            <span class="interface-scale-indicator" data-scale-indicator>Skala bar: otomatis</span>
             <span class="last-updated" data-interface-updated>Terakhir diperbarui: -</span>
         </div>
 
@@ -133,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sourceInfoBox = document.querySelector('[data-interface-source]');
     const routersContainer = document.querySelector('[data-interface-routers]');
     const lastUpdated = document.querySelector('[data-interface-updated]');
+    const scaleIndicator = document.querySelector('[data-scale-indicator]');
     const errorBox = document.querySelector('[data-interface-error]');
     const successBox = document.querySelector('[data-interface-success]');
     const initialDataElement = document.getElementById('interface-initial-data');
@@ -149,15 +157,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const clientSubmitButton = document.querySelector('[data-client-submit]');
     const clientFeedback = document.querySelector('[data-client-feedback]');
     const refreshClientButton = document.querySelector('[data-refresh-client-list]');
+    const manualScaleInput = document.querySelector('[data-scale-input]');
 
     let state = {};
     let refreshTimer = null;
+    let isFetching = false;
+    let queuedFetch = false;
     let clientsState = { clients: [] };
     let selectedClient = null;
     let selectedClientKey = null;
     const interfaceSelections = new Map();
     const rateHistory = new Map();
     const HISTORY_WINDOW_MS = 5 * 60 * 1000;
+    let manualScaleBps = null;
 
     const parseInitialData = () => {
         if (!initialDataElement) {
@@ -218,6 +230,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const numeric = Number(String(value ?? '').replace(/[^\d.-]/g, ''));
 
         return Number.isFinite(numeric) ? numeric : 0;
+    };
+
+    const parseManualScaleValue = (value) => {
+        const text = String(value ?? '').trim();
+
+        if (text === '') {
+            return null;
+        }
+
+        const numeric = Number(text.replace(',', '.'));
+
+        if (!Number.isFinite(numeric) || numeric <= 0) {
+            return null;
+        }
+
+        return numeric * 1_000_000;
     };
 
     const getInterfaceCapacityMbps = (iface, router) => {
@@ -323,6 +351,52 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${converted.toFixed(exponent === 0 ? 0 : 2)} ${units[exponent]}`;
     };
 
+    const updateScaleIndicator = () => {
+        if (!scaleIndicator) {
+            return;
+        }
+
+        if (manualScaleBps && manualScaleBps > 0) {
+            scaleIndicator.textContent = `Skala bar manual: ${formatRate(manualScaleBps)}`;
+            scaleIndicator.dataset.mode = 'manual';
+            scaleIndicator.hidden = false;
+        } else {
+            scaleIndicator.textContent = 'Skala bar: otomatis';
+            scaleIndicator.dataset.mode = 'auto';
+            scaleIndicator.hidden = false;
+        }
+    };
+
+    const syncManualScaleFromInput = () => {
+        if (!manualScaleInput) {
+            manualScaleBps = null;
+            updateScaleIndicator();
+
+            return;
+        }
+
+        const rawValue = manualScaleInput.value;
+        const parsed = parseManualScaleValue(rawValue);
+        const isEmpty = rawValue.trim() === '';
+
+        if (isEmpty) {
+            manualScaleBps = null;
+        } else if (parsed !== null) {
+            manualScaleBps = parsed;
+        } else {
+            manualScaleBps = null;
+            manualScaleInput.value = '';
+        }
+
+        manualScaleInput.classList.toggle('has-value', Boolean(manualScaleBps));
+
+        updateScaleIndicator();
+
+        if (state && Array.isArray(state.routers)) {
+            renderRouters(state);
+        }
+    };
+
     const formatBytes = (value) => {
         const bytes = parseNumber(value);
 
@@ -352,6 +426,27 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const makeHistoryKey = (routerKey, interfaceName) => `${routerKey}::${interfaceName}`;
+
+    const parseJsonSafe = async (response) => {
+        const text = await response.text();
+        const trimmed = text.trim();
+
+        if (trimmed === '') {
+            return {};
+        }
+
+        try {
+            return JSON.parse(trimmed);
+        } catch (error) {
+            const snippet = trimmed.split(/\r?\n/).slice(0, 3).join(' ').slice(0, 200);
+            const status = response?.status ?? 0;
+            const message = snippet !== ''
+                ? `Respons tidak valid dari server (status ${status}): ${snippet}`
+                : `Respons tidak valid dari server (status ${status}).`;
+
+            throw new Error(message);
+        }
+    };
 
     const updateRateHistory = (data) => {
         const routers = Array.isArray(data?.routers) ? data.routers : [];
@@ -644,26 +739,81 @@ document.addEventListener('DOMContentLoaded', () => {
         const interfaceCapacityBps = Number.isFinite(interfaceCapacityMbps) && interfaceCapacityMbps > 0
             ? interfaceCapacityMbps * 1_000_000
             : null;
-        const rxBaseline = Number.isFinite(interfaceCapacityBps) && interfaceCapacityBps > 0
+        const manualBaselineBps = manualScaleBps && manualScaleBps > 0 ? manualScaleBps : null;
+        const fallbackRxBaseline = Number.isFinite(interfaceCapacityBps) && interfaceCapacityBps > 0
             ? interfaceCapacityBps
             : Math.max(getHistoryPeak(routerKey, selectedName, 'rx'), maxInterfaceRate, throughputRx);
-        const txBaseline = Number.isFinite(interfaceCapacityBps) && interfaceCapacityBps > 0
+        const fallbackTxBaseline = Number.isFinite(interfaceCapacityBps) && interfaceCapacityBps > 0
             ? interfaceCapacityBps
             : Math.max(getHistoryPeak(routerKey, selectedName, 'tx'), maxInterfaceRate, throughputTx);
+        const rxBaseline = manualBaselineBps ?? fallbackRxBaseline;
+        const txBaseline = manualBaselineBps ?? fallbackTxBaseline;
         const rxPercent = computeRatePercent(throughputRx, rxBaseline);
         const txPercent = computeRatePercent(throughputTx, txBaseline);
         const rxLevel = determineRateLevel(throughputRxMbps);
         const txLevel = determineRateLevel(throughputTxMbps);
-        const capacityAttr = Number.isFinite(interfaceCapacityMbps) && interfaceCapacityMbps > 0
-            ? ` data-capacity-mbps="${escapeHtml(interfaceCapacityMbps.toFixed(2))}"`
-            : '';
-        const rxLabel = `RX ${escapeHtml(formatRate(selectedInterface?.rx_rate))}`;
-        const txLabel = `TX ${escapeHtml(formatRate(selectedInterface?.tx_rate))}`;
+        const manualScaleMbps = manualBaselineBps ? manualBaselineBps / 1_000_000 : null;
+
+        let metricsAttributes = `data-interface-name="${escapeHtml(selectedInterface?.name ?? '')}"`;
+
+        if (manualBaselineBps) {
+            metricsAttributes += ` data-capacity-mbps="${escapeHtml(manualScaleMbps.toFixed(2))}" data-scale-mode="manual"`;
+        } else if (Number.isFinite(interfaceCapacityMbps) && interfaceCapacityMbps > 0) {
+            metricsAttributes += ` data-capacity-mbps="${escapeHtml(interfaceCapacityMbps.toFixed(2))}" data-scale-mode="capacity"`;
+        } else {
+            metricsAttributes += ' data-scale-mode="dynamic"';
+        }
+
+        const rxPercentOfScale = manualBaselineBps ? (throughputRx / manualBaselineBps) * 100 : null;
+        const txPercentOfScale = manualBaselineBps ? (throughputTx / manualBaselineBps) * 100 : null;
+
+        const formatPercent = (value) => {
+            if (!Number.isFinite(value)) {
+                return null;
+            }
+
+            const clamped = Math.max(0, Math.min(999, value));
+
+            return `${clamped.toFixed(clamped >= 100 ? 0 : 1)}%`;
+        };
+
+        let rxLabelText = `RX ${formatRate(selectedInterface?.rx_rate)}`;
+        const rxPercentLabel = formatPercent(rxPercentOfScale);
+
+        if (rxPercentLabel) {
+            rxLabelText += ` (${rxPercentLabel})`;
+        }
+
+        let txLabelText = `TX ${formatRate(selectedInterface?.tx_rate)}`;
+        const txPercentLabel = formatPercent(txPercentOfScale);
+
+        if (txPercentLabel) {
+            txLabelText += ` (${txPercentLabel})`;
+        }
+
+        const rxLabel = escapeHtml(rxLabelText);
+        const txLabel = escapeHtml(txLabelText);
+
+        let scaleLegendHtml = '';
+
+        if (manualBaselineBps) {
+            scaleLegendHtml = `<div class="router-row-scale router-row-scale--manual">Skala manual: ${escapeHtml(formatRate(manualBaselineBps))}</div>`;
+        } else if (Number.isFinite(interfaceCapacityMbps) && interfaceCapacityMbps > 0) {
+            const capacityLabel = interfaceCapacityMbps >= 100
+                ? interfaceCapacityMbps.toFixed(0)
+                : interfaceCapacityMbps.toFixed(1);
+
+            scaleLegendHtml = `<div class="router-row-scale router-row-scale--capacity">Skala kapasitas: ${escapeHtml(capacityLabel)} Mbps</div>`;
+        } else if (Math.max(fallbackRxBaseline, fallbackTxBaseline) > 0) {
+            const dynamicBaseline = Math.max(fallbackRxBaseline, fallbackTxBaseline);
+
+            scaleLegendHtml = `<div class="router-row-scale router-row-scale--dynamic">Skala dinamis: ${escapeHtml(formatRate(dynamicBaseline))} (puncak 5 menit)</div>`;
+        }
 
         const statusClass = selectedInterface ? (statusClassMap[selectedInterface.status] || 'status-chip--warning') : 'status-chip--muted';
         const metricsHtml = selectedInterface
             ? `
-                <div class="router-row-metrics" data-interface-name="${escapeHtml(selectedInterface.name)}"${capacityAttr}>
+                <div class="router-row-metrics" ${metricsAttributes}>
                     <div class="router-row-interface-label">Interface: ${escapeHtml(selectedInterface.name)}</div>
                     <div class="router-row-bars">
                         <div class="router-row-bar-line router-row-bar-line--rx router-row-bar-line--level-${escapeHtml(rxLevel)}">
@@ -675,6 +825,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${buildTrafficBar('tx', txPercent, txLevel)}
                         </div>
                     </div>
+                    ${scaleLegendHtml}
                 </div>
             `
             : '<div class="router-row-metrics router-row-metrics--empty">Tidak ada interface ethernet.</div>';
@@ -734,6 +885,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderAll = (data) => {
         updateRateHistory(data);
         state = data;
+        updateScaleIndicator();
         renderSummary(data);
         renderSourceInfo(data);
         renderRouters(data);
@@ -749,6 +901,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const fetchLatest = async () => {
+        if (isFetching) {
+            queuedFetch = true;
+            return;
+        }
+
+        isFetching = true;
         try {
             refreshButton.disabled = true;
             const response = await fetch('api/interfaces.php', { cache: 'no-store' });
@@ -764,21 +922,33 @@ document.addEventListener('DOMContentLoaded', () => {
             errorBox.hidden = false;
         } finally {
             refreshButton.disabled = false;
+            isFetching = false;
+
+            if (queuedFetch) {
+                queuedFetch = false;
+                fetchLatest();
+            }
         }
     };
 
-    const scheduleRefresh = () => {
+    const scheduleRefresh = (triggerImmediate = false) => {
         if (refreshTimer) {
             clearInterval(refreshTimer);
         }
 
-        const interval = Number(refreshSelect?.value ?? 15000);
+        const interval = Number(refreshSelect?.value ?? 5000);
 
         if (!Number.isFinite(interval) || interval <= 0) {
             return;
         }
 
-        refreshTimer = setInterval(fetchLatest, interval);
+        refreshTimer = setInterval(() => {
+            fetchLatest();
+        }, interval);
+
+        if (triggerImmediate) {
+            fetchLatest();
+        }
     };
 
     const deleteRouterClient = async (button) => {
@@ -806,7 +976,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify({ client_key: clientKey, ip_address: routerIp }),
             });
 
-            const result = await response.json();
+            const result = await parseJsonSafe(response);
 
             if (!response.ok || !result.success) {
                 throw new Error(result.message || 'Gagal menghapus router.');
@@ -1008,7 +1178,26 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     refreshSelect?.addEventListener('change', () => {
-        scheduleRefresh();
+        scheduleRefresh(true);
+    });
+
+    manualScaleInput?.addEventListener('input', () => {
+        syncManualScaleFromInput();
+    });
+
+    manualScaleInput?.addEventListener('change', () => {
+        syncManualScaleFromInput();
+    });
+
+    manualScaleInput?.addEventListener('blur', () => {
+        syncManualScaleFromInput();
+    });
+
+    manualScaleInput?.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            syncManualScaleFromInput();
+        }
     });
 
     routersContainer?.addEventListener('change', (event) => {
@@ -1170,16 +1359,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    syncManualScaleFromInput();
+
     const initialData = parseInitialData();
     renderAll(initialData);
-    scheduleRefresh();
+    scheduleRefresh(true);
 
-    if (refreshSelect) {
-        const interval = Number(refreshSelect.value);
-        if (Number.isFinite(interval) && interval > 0) {
-            setTimeout(fetchLatest, interval);
-        }
-    }
 });
 </script>
 </body>

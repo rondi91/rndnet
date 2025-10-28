@@ -1028,10 +1028,9 @@ class RouterService
             }
         }
 
-        $payload['clients'] = array_values($payload['clients'] ?? []);
-        $payload['total_clients'] = count($payload['clients']);
+        $clients = array_values($payload['clients'] ?? []);
 
-        usort($payload['clients'], static function (array $a, array $b): int {
+        usort($clients, static function (array $a, array $b): int {
             $serverCompare = strcasecmp($a['server_name'] ?? '', $b['server_name'] ?? '');
 
             if ($serverCompare !== 0) {
@@ -1044,7 +1043,7 @@ class RouterService
             return strcasecmp($labelA, $labelB);
         });
 
-        $payload['routers'] = array_map(function (array $client): array {
+        $routers = array_map(function (array $client): array {
             $ip = trim((string) ($client['ip'] ?? $client['ip_address'] ?? $client['address'] ?? ''));
             $username = (string) ($client['user'] ?? $client['username'] ?? self::DEFAULT_CLIENT_USERNAME);
             $password = (string) ($client['pass'] ?? $client['password'] ?? self::DEFAULT_CLIENT_PASSWORD);
@@ -1082,11 +1081,9 @@ class RouterService
             }
 
             return $router;
-        }, $payload['clients']);
+        }, $clients);
 
-        $payload['total_routers'] = count($payload['routers']);
-
-        usort($payload['routers'], static function (array $a, array $b): int {
+        usort($routers, static function (array $a, array $b): int {
             $nameCompare = strcasecmp($a['name'] ?? '', $b['name'] ?? '');
 
             if ($nameCompare !== 0) {
@@ -1096,9 +1093,16 @@ class RouterService
             return strcasecmp($a['ip'] ?? '', $b['ip'] ?? '');
         });
 
+        $persistPayload = [
+            'generated_at' => $payload['generated_at'] ?? date('c'),
+            'total_clients' => count($clients),
+            'total_routers' => count($routers),
+            'routers' => $routers,
+        ];
+
         @file_put_contents(
             $this->clientStoragePath,
-            json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            json_encode($persistPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
         );
     }
 
