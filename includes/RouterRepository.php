@@ -49,6 +49,37 @@ class RouterRepository
     }
 
     /**
+     * Menghapus router berdasarkan alamat IP yang tersimpan.
+     */
+    public function removeByIp(string $ipAddress): bool
+    {
+        $ipAddress = trim($ipAddress);
+
+        if ($ipAddress === '') {
+            return false;
+        }
+
+        $routers = $this->all();
+        $filtered = [];
+        $removed = false;
+
+        foreach ($routers as $router) {
+            if (($router['ip_address'] ?? '') === $ipAddress) {
+                $removed = true;
+                continue;
+            }
+
+            $filtered[] = $router;
+        }
+
+        if ($removed) {
+            $this->persist($filtered);
+        }
+
+        return $removed;
+    }
+
+    /**
      * Menambahkan router baru ke dalam penyimpanan.
      *
      * @param array $router Data router (nama, alamat IP, dan catatan).
@@ -75,5 +106,13 @@ class RouterRepository
         }
 
         return null;
+    }
+
+    /**
+     * Mengembalikan jalur penyimpanan JSON yang digunakan repository.
+     */
+    public function getStoragePath(): string
+    {
+        return $this->storagePath;
     }
 }

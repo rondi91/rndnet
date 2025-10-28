@@ -133,6 +133,7 @@ $renderProfileDetail = static function (array $profile): string {
         <nav>
             <a href="#overview">Ikhtisar</a>
             <a href="#pppoe">Manajemen PPPoE</a>
+            <a href="interface.php">Interface</a>
             <a href="index.php">Tambah Router</a>
         </nav>
     </aside>

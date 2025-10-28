@@ -16,7 +16,7 @@
     },
     {
         "name": "gx42",
-        "ip_address": "172.16.30.8",
+        "ip_address": "192.168.255.20",
         "username": "rondi",
         "password": "21184662",
         "notes": "AP.",

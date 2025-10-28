@@ -195,6 +195,230 @@ class MikroTikClient
     }
 
     /**
+     * Mengambil daftar interface ethernet lengkap dengan informasi trafik.
+     */
+    public function getEthernetInterfaces(): array
+    {
+        if (!$this->connect()) {
+            return [
+                'success' => false,
+                'interfaces' => [],
+                'error' => $this->lastError,
+            ];
+        }
+
+        try {
+            $query = new Query('/interface/ethernet/print');
+            $response = $this->client->query($query)->read();
+            $this->lastError = null;
+
+            $interfaces = [];
+
+            foreach ($response as $row) {
+                $name = $row['name'] ?? '';
+                $running = $this->normalizeBoolean($row['running'] ?? null);
+                $disabled = $this->normalizeBoolean($row['disabled'] ?? null);
+                $rxBytes = $this->parseIntegerField($row['rx-byte'] ?? 0);
+                $txBytes = $this->parseIntegerField($row['tx-byte'] ?? 0);
+                $rxPackets = $this->parseIntegerField($row['rx-packet'] ?? 0);
+                $txPackets = $this->parseIntegerField($row['tx-packet'] ?? 0);
+
+                $monitor = $this->fetchInterfaceMonitorStats($name);
+                $rxBps = $monitor['rx_bps'] ?? $this->parseBitsPerSecondValue($row['rx-rate'] ?? 0);
+                $txBps = $monitor['tx_bps'] ?? $this->parseBitsPerSecondValue($row['tx-rate'] ?? 0);
+                $rxRateLabel = $monitor['rx_rate_label'] ?? $this->formatBitsPerSecond($rxBps);
+                $txRateLabel = $monitor['tx_rate_label'] ?? $this->formatBitsPerSecond($txBps);
+
+                $interfaces[] = [
+                    'name' => $name !== '' ? $name : '-',
+                    'mac_address' => $row['mac-address'] ?? '',
+                    'running' => $running,
+                    'disabled' => $disabled,
+                    'status' => $disabled ? 'disabled' : ($running ? 'running' : 'stopped'),
+                    'mtu' => $row['mtu'] ?? '',
+                    'last_link_up_time' => $row['last-link-up-time'] ?? '',
+                    'link_partner' => $row['link-partner'] ?? '',
+                    'rx_byte' => $rxBytes,
+                    'tx_byte' => $txBytes,
+                    'rx_packet' => $rxPackets,
+                    'tx_packet' => $txPackets,
+                    'rx_rate' => $rxRateLabel,
+                    'tx_rate' => $txRateLabel,
+                    'rx_bps' => $rxBps,
+                    'tx_bps' => $txBps,
+                    'rx_mbps' => round($rxBps / 1_000_000, 2),
+                    'tx_mbps' => round($txBps / 1_000_000, 2),
+                    'monitor_timestamp' => $monitor['timestamp'] ?? null,
+                    'monitor_error' => $monitor['error'] ?? null,
+                    'if_speed' => $row['speed'] ?? null,
+                    'comment' => $row['comment'] ?? '',
+                ];
+            }
+
+            return [
+                'success' => true,
+                'interfaces' => $interfaces,
+            ];
+        } catch (\Throwable $exception) {
+            $this->lastError = $exception->getMessage();
+
+            return [
+                'success' => false,
+                'interfaces' => [],
+                'error' => $this->lastError,
+            ];
+        }
+    }
+
+    /**
+     * Mengambil statistik realtime interface menggunakan perintah
+     * `/interface/monitor-traffic` sebagaimana pada contoh `traffic_lib.php`.
+     */
+    private function fetchInterfaceMonitorStats(string $interfaceName): array
+    {
+        $name = trim($interfaceName);
+
+        if ($name === '') {
+            return [
+                'success' => false,
+                'rx_bps' => 0,
+                'tx_bps' => 0,
+                'error' => null,
+            ];
+        }
+
+        try {
+            $query = (new Query('/interface/monitor-traffic'))
+                ->equal('interface', $name)
+                ->equal('once', 'true');
+
+            $result = $this->client->query($query)->read();
+        } catch (\Throwable $exception) {
+            return [
+                'success' => false,
+                'rx_bps' => 0,
+                'tx_bps' => 0,
+                'error' => $exception->getMessage(),
+            ];
+        }
+
+        $row = $result[0] ?? [];
+        $rxBps = $this->parseIntegerField($row['rx-bits-per-second'] ?? $row['rx-current'] ?? 0);
+        $txBps = $this->parseIntegerField($row['tx-bits-per-second'] ?? $row['tx-current'] ?? 0);
+
+        return [
+            'success' => true,
+            'rx_bps' => $rxBps,
+            'tx_bps' => $txBps,
+            'rx_rate_label' => $this->formatBitsPerSecond($rxBps),
+            'tx_rate_label' => $this->formatBitsPerSecond($txBps),
+            'timestamp' => date('c'),
+            'error' => null,
+        ];
+    }
+
+    /**
+     * Mengubah nilai bit per detik menjadi label ramah baca.
+     */
+    private function formatBitsPerSecond(int $bitsPerSecond): string
+    {
+        if ($bitsPerSecond <= 0) {
+            return '0 bps';
+        }
+
+        $units = ['bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps'];
+        $exponent = (int) floor(log($bitsPerSecond, 1000));
+        $exponent = max(0, min($exponent, count($units) - 1));
+        $value = $bitsPerSecond / (1000 ** $exponent);
+
+        return sprintf('%s %s', $exponent === 0 ? number_format($value, 0, '.', '') : number_format($value, 2, '.', ''), $units[$exponent]);
+    }
+
+    /**
+     * Membersihkan angka yang dikirim RouterOS sehingga aman dikonversi ke int.
+     */
+    private function parseIntegerField($value): int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_float($value)) {
+            return (int) round($value);
+        }
+
+        $normalized = preg_replace('/[^0-9.\-]/', '', (string) $value);
+
+        if ($normalized === '' || $normalized === '-' || $normalized === null) {
+            return 0;
+        }
+
+        return (int) round((float) $normalized);
+    }
+
+    /**
+     * Mengonversi nilai laju yang mungkin memiliki satuan (Mbps/Kbps) ke bps.
+     */
+    private function parseBitsPerSecondValue($value): int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_float($value)) {
+            return (int) round($value);
+        }
+
+        $text = trim((string) $value);
+
+        if ($text === '') {
+            return 0;
+        }
+
+        if (!preg_match('/([\d.,]+)/', $text, $matches)) {
+            return 0;
+        }
+
+        $numeric = (float) str_replace(',', '.', $matches[1]);
+
+        if ($numeric <= 0) {
+            return 0;
+        }
+
+        $lower = strtolower($text);
+        $multiplier = 1;
+
+        if (strpos($lower, 'tbps') !== false || strpos($lower, 'tbit') !== false) {
+            $multiplier = 1_000_000_000_000;
+        } elseif (strpos($lower, 'gbps') !== false || strpos($lower, 'gbit') !== false) {
+            $multiplier = 1_000_000_000;
+        } elseif (strpos($lower, 'mbps') !== false || strpos($lower, 'mbit') !== false) {
+            $multiplier = 1_000_000;
+        } elseif (strpos($lower, 'kbps') !== false || strpos($lower, 'kbit') !== false) {
+            $multiplier = 1_000;
+        } elseif (strpos($lower, 'bps') !== false || strpos($lower, 'bit') !== false) {
+            $multiplier = 1;
+        } elseif (preg_match('/([kmgt])(?:bps|bit|b)?$/', $lower, $unitMatch)) {
+            switch ($unitMatch[1]) {
+                case 't':
+                    $multiplier = 1_000_000_000_000;
+                    break;
+                case 'g':
+                    $multiplier = 1_000_000_000;
+                    break;
+                case 'm':
+                    $multiplier = 1_000_000;
+                    break;
+                case 'k':
+                    $multiplier = 1_000;
+                    break;
+            }
+        }
+
+        return (int) round($numeric * $multiplier);
+    }
+
+    /**
      * Menghapus PPPoE secret berdasarkan ID unik yang diberikan RouterOS.
      */
     public function removePppoeSecret(string $secretId): bool
@@ -216,6 +440,20 @@ class MikroTikClient
 
             return false;
         }
+    }
+
+    /**
+     * Mengubah nilai boolean RouterOS ke dalam bentuk boolean PHP murni.
+     */
+    private function normalizeBoolean($value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $normalized = strtolower((string) $value);
+
+        return in_array($normalized, ['1', 'true', 'yes', 'on', 'running'], true);
     }
 
     /**
