@@ -55,6 +55,23 @@ button, .button {
     display: inline-block;
 }
 
+.button-outline {
+    background: transparent;
+    color: #60a5fa;
+    border: 1px solid rgba(96, 165, 250, 0.7);
+    padding: 8px 14px;
+}
+
+.button-outline:hover {
+    background: rgba(96, 165, 250, 0.12);
+}
+
+.button-outline:disabled {
+    color: rgba(148, 163, 184, 0.7);
+    border-color: rgba(148, 163, 184, 0.4);
+    background: transparent;
+}
+
 .button-danger {
     background-color: #ef4444;
 }
@@ -146,6 +163,37 @@ form input, form textarea, form select {
     min-width: 72px;
 }
 
+.manual-scale-control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.manual-scale-control input {
+    width: 110px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #d6e1f5;
+    background: #ffffff;
+    color: #1f2937;
+    font-weight: 600;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.manual-scale-control input:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+}
+
+.manual-scale-control input.has-value {
+    border-color: #2563eb;
+}
+
 .interface-actions select:focus {
     outline: none;
     box-shadow: 0 0 0 3px rgba(0, 97, 255, 0.2);
@@ -196,6 +244,29 @@ form input, form textarea, form select {
 
 .interface-meta-item strong {
     color: #0f172a;
+}
+
+.interface-scale-indicator {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1f2937;
+    background: rgba(148, 163, 184, 0.2);
+    padding: 4px 12px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.interface-scale-indicator[data-mode="manual"] {
+    background: rgba(59, 130, 246, 0.18);
+    color: #1d4ed8;
+}
+
+.interface-scale-indicator[data-mode="auto"] {
+    background: rgba(148, 163, 184, 0.18);
+    color: #1f2937;
 }
 
 .interface-source-note {
@@ -276,6 +347,43 @@ form input, form textarea, form select {
     font-size: 0.9rem;
 }
 
+.router-row-capacity-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(148, 163, 184, 0.25);
+    color: #e2e8f0;
+}
+
+.router-row-capacity-badge__percent {
+    font-size: 0.65rem;
+    background: rgba(15, 23, 42, 0.55);
+    padding: 2px 6px;
+    border-radius: 999px;
+    letter-spacing: 0.04em;
+}
+
+.router-row-capacity-badge--tx {
+    background: rgba(239, 68, 68, 0.22);
+    color: #f87171;
+}
+
+.router-row-capacity-badge--rx {
+    background: rgba(59, 130, 246, 0.22);
+    color: #93c5fd;
+}
+
+.router-row-capacity-badge--both {
+    background: rgba(245, 158, 11, 0.22);
+    color: #fbbf24;
+}
+
 .router-row-metrics {
     display: flex;
     flex-direction: column;
@@ -304,6 +412,27 @@ form input, form textarea, form select {
     gap: 10px;
     width: 100%;
     align-items: center;
+}
+
+.router-row-scale {
+    margin-top: 12px;
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(148, 163, 184, 0.85);
+    text-align: center;
+}
+
+.router-row-scale--manual {
+    color: #2563eb;
+}
+
+.router-row-scale--capacity {
+    color: #0ea5e9;
+}
+
+.router-row-scale--dynamic {
+    color: #f97316;
 }
 
 .router-row-bar-line {
@@ -400,17 +529,21 @@ form input, form textarea, form select {
 
 .router-row-selector {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 8px;
-    align-items: flex-start;
-    min-width: 180px;
+    align-items: center;
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 .router-row-selector select {
-    min-width: 160px;
+    min-width: 140px;
+    max-width: 220px;
+    width: auto;
     background: rgba(15, 23, 42, 0.65);
     border: 1px solid rgba(148, 163, 184, 0.3);
     color: #f1f5f9;
+    flex: 0 1 220px;
 }
 
 .router-row-selector .status-chip {
@@ -424,7 +557,7 @@ form input, form textarea, form select {
 
 .router-row-controls {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 16px;
     margin-left: auto;
     flex: 0 0 auto;
@@ -433,15 +566,220 @@ form input, form textarea, form select {
     text-align: right;
 }
 
+.router-row-controls--error {
+    align-items: flex-start;
+}
+
 .router-row-actions {
     display: flex;
-    justify-content: flex-end;
+    flex-direction: column;
+    align-items: flex-end;
     align-self: center;
     width: auto;
+    gap: 12px;
 }
 
 .router-row-actions .button-danger {
     min-width: 88px;
+}
+
+.router-row-bandwidth-controls {
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.bandwidth-control-summary {
+    font-size: 0.75rem;
+    color: rgba(226, 232, 240, 0.72);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.router-row-bandwidth-summary {
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: rgba(148, 163, 184, 0.85);
+}
+
+.bandwidth-control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgba(226, 232, 240, 0.82);
+}
+
+.bandwidth-control select,
+.bandwidth-control input {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 10px;
+    padding: 8px 12px;
+    color: #f8fafc;
+    min-width: 110px;
+}
+
+.bandwidth-control input {
+    min-width: 90px;
+    width: 96px;
+}
+
+.router-row-delete {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+}
+
+.router-bandwidth-button[aria-busy="true"] {
+    opacity: 0.65;
+    pointer-events: none;
+}
+
+.router-row-bandwidth {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex: 1 1 100%;
+    font-size: 0.82rem;
+    color: rgba(226, 232, 240, 0.85);
+}
+
+.router-row-bandwidth-actions-inline {
+    width: 100%;
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
+
+.router-row-bandwidth-actions-inline .button {
+    font-size: 0.75rem;
+    padding: 6px 12px;
+}
+
+.router-row-bandwidth-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: #e2e8f0;
+}
+
+.router-row-bandwidth-title {
+    font-weight: 600;
+    color: #cbd5f5;
+}
+
+.router-row-bandwidth-server {
+    font-weight: 600;
+    color: #38bdf8;
+}
+
+.router-row-bandwidth-source {
+    font-size: 0.75rem;
+    color: rgba(148, 163, 184, 0.85);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.router-row-bandwidth-interface {
+    font-size: 0.75rem;
+    color: rgba(148, 163, 184, 0.8);
+    text-align: right;
+}
+
+.router-row-bandwidth-status {
+    font-size: 0.78rem;
+    text-align: right;
+}
+
+.router-row-bandwidth-status--idle {
+    color: rgba(148, 163, 184, 0.8);
+}
+
+.router-row-bandwidth-status--running {
+    color: #facc15;
+}
+
+.router-row-bandwidth-status--error {
+    color: #f87171;
+}
+
+.router-row-bandwidth-message {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.82rem;
+}
+
+.router-row-bandwidth-metrics {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    font-size: 0.85rem;
+    color: #f8fafc;
+}
+
+.bandwidth-metric {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+}
+
+.bandwidth-metric-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(148, 163, 184, 0.85);
+}
+
+.bandwidth-metric--tx .bandwidth-metric-value {
+    color: #fca5a5;
+}
+
+.bandwidth-metric--rx .bandwidth-metric-value {
+    color: #86efac;
+}
+
+.router-row-bandwidth-peaks {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    font-size: 0.75rem;
+    color: rgba(148, 163, 184, 0.85);
+}
+
+.bandwidth-peak--tx {
+    color: #f87171;
+}
+
+.bandwidth-peak--rx {
+    color: #4ade80;
+}
+
+.router-row-bandwidth-footer {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    font-size: 0.72rem;
+    color: rgba(148, 163, 184, 0.75);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.router-row-bandwidth-footer span {
+    white-space: nowrap;
+}
+
+.router-row-bandwidth-timestamp {
+    font-size: 0.72rem;
+    color: rgba(148, 163, 184, 0.7);
+    text-align: right;
 }
 
 .router-row-message {
@@ -1365,6 +1703,89 @@ form input, form textarea, form select {
     flex-direction: column;
 }
 
+.modal-bandwidth-config {
+    width: min(420px, 92vw);
+    background: linear-gradient(135deg, #111827, #1f2937);
+    color: #e2e8f0;
+}
+
+.bandwidth-config-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.bandwidth-config-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: rgba(226, 232, 240, 0.9);
+}
+
+.bandwidth-config-info + .bandwidth-config-info {
+    margin-top: 6px;
+}
+
+.bandwidth-config-label {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.bandwidth-config-value {
+    font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', monospace;
+}
+
+.bandwidth-config-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.bandwidth-config-grid--server {
+    grid-template-columns: 1fr;
+}
+
+.bandwidth-config-grid--auth {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.bandwidth-config-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: rgba(226, 232, 240, 0.82);
+}
+
+.bandwidth-config-grid select,
+.bandwidth-config-grid input {
+    background: rgba(15, 23, 42, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 10px;
+    padding: 8px 12px;
+    color: #f8fafc;
+}
+
+.bandwidth-config-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.bandwidth-config-feedback {
+    font-size: 0.75rem;
+    color: #f87171;
+}
+
+.bandwidth-config-feedback.is-success {
+    color: #34d399;
+}
+
+.bandwidth-config-feedback[hidden] {
+    display: none;
+}
+
 .modal-header,
 .modal-footer {
     padding: 20px 24px;
@@ -1446,6 +1867,47 @@ form input, form textarea, form select {
     color: rgba(148, 163, 184, 0.8);
     background: rgba(15, 23, 42, 0.55);
     border-radius: 12px;
+}
+
+.bandwidth-modal-router {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: rgba(148, 163, 184, 0.85);
+    margin-bottom: 16px;
+}
+
+.bandwidth-modal-router span:not(.bandwidth-modal-router-sep) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(15, 23, 42, 0.45);
+    padding: 4px 8px;
+    border-radius: 999px;
+}
+
+.bandwidth-modal-router-sep {
+    color: rgba(148, 163, 184, 0.35);
+    align-self: center;
+    padding: 0 4px;
+}
+
+.bandwidth-modal-content .router-row-bandwidth {
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.bandwidth-modal-content .router-row-bandwidth-header {
+    justify-content: flex-start;
+}
+
+.bandwidth-modal-content .router-row-bandwidth-interface {
+    align-self: flex-start;
+}
+
+.bandwidth-modal-content .router-row-bandwidth-actions-inline {
+    display: none;
 }
 
 .client-option {
@@ -1644,6 +2106,29 @@ form input, form textarea, form select {
 
     .router-row-actions {
         justify-content: flex-start;
+        align-items: flex-start;
+        width: 100%;
+    }
+
+    .router-row-bandwidth {
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    .router-row-bandwidth-header {
+        justify-content: flex-start;
+    }
+
+    .router-row-bandwidth-interface,
+    .router-row-bandwidth-status,
+    .router-row-bandwidth-timestamp {
+        text-align: left;
+    }
+
+    .router-row-bandwidth-metrics,
+    .router-row-bandwidth-peaks,
+    .router-row-bandwidth-footer {
+        justify-content: flex-start;
     }
 }
 
@@ -1663,13 +2148,28 @@ form input, form textarea, form select {
         gap: 12px;
     }
 
+    .router-row-bandwidth {
+        width: 100%;
+        align-items: flex-start;
+    }
+
+    .router-row-bandwidth-metrics,
+    .router-row-bandwidth-peaks,
+    .router-row-bandwidth-footer {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
     .router-row-selector {
         width: 100%;
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .router-row-actions {
         width: 100%;
         justify-content: flex-start;
+        align-items: stretch;
     }
 
     .pppoe-server-tabs {
@@ -1697,6 +2197,19 @@ form input, form textarea, form select {
 
     .interface-actions {
         justify-content: flex-start;
+    }
+
+    .manual-scale-control {
+        width: 100%;
+    }
+
+    .manual-scale-control input {
+        width: 100%;
+    }
+
+    .interface-scale-indicator {
+        width: 100%;
+        justify-content: center;
     }
 
     .router-card-header {

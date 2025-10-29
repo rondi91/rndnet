@@ -29,16 +29,36 @@ class RouterService
     /** @var string $clientStoragePath Lokasi penyimpanan data klien router. */
     private string $clientStoragePath;
 
+    /** @var string $serverStoragePath Lokasi penyimpanan kredensial bandwidth server. */
+    private string $serverStoragePath;
+
+    /** @var array|null Cache kredensial bandwidth server yang sudah dibaca. */
+    private ?array $cachedBandwidthServers = null;
+
+    /** @var string Jalur penyimpanan batasan frekuensi bandwidth test. */
+    private string $bandwidthRateLimitPath;
+
+    /** @var array|null Cache batasan frekuensi bandwidth test. */
+    private ?array $bandwidthRateLimitState = null;
+
     private const DEFAULT_CLIENT_USERNAME = 'rondi';
     private const DEFAULT_CLIENT_PASSWORD = '21184662';
+    private const BANDWIDTH_RATE_LIMIT_SECONDS = 15;
 
     /**
      * Konstruktor menerima dependensi RouterRepository melalui injeksi.
      */
-    public function __construct(RouterRepository $repository, ?string $clientStoragePath = null)
+    public function __construct(
+        RouterRepository $repository,
+        ?string $clientStoragePath = null,
+        ?string $serverStoragePath = null,
+        ?string $bandwidthRateLimitPath = null
+    )
     {
         $this->repository = $repository;
         $this->clientStoragePath = $clientStoragePath ?? __DIR__ . '/../data/router_client.json';
+        $this->serverStoragePath = $serverStoragePath ?? __DIR__ . '/../data/routers_server.json';
+        $this->bandwidthRateLimitPath = $bandwidthRateLimitPath ?? __DIR__ . '/../data/bandwidth_rate_limit.json';
     }
 
     /**
@@ -223,6 +243,8 @@ class RouterService
                     continue;
                 }
 
+                $serverInfo = $this->determineBandwidthServer($ipAddress);
+
                 $clientEntries[] = [
                     'name' => $entry['name'] ?? $ipAddress,
                     'ip_address' => $ipAddress,
@@ -231,8 +253,9 @@ class RouterService
                     'notes' => $entry['notes'] ?? '',
                     'pppoe_profile' => $entry['profile'] ?? '',
                     'pppoe_username' => $entry['pppoe_username'] ?? '',
-                    'server_ip' => $entry['server_ip'] ?? '',
-                    'server_name' => $entry['server_name'] ?? '',
+                    'server_ip' => $serverInfo['ip'] ?? ($entry['server_ip'] ?? ''),
+                    'server_name' => $serverInfo['label'] ?? ($entry['server_name'] ?? ''),
+                    'server_source' => $serverInfo['source'] ?? null,
                     'client_key' => $entry['client_key'] ?? $this->normaliseRouterClientKey([
                         'ip_address' => $ipAddress,
                         'username' => $entry['user'] ?? self::DEFAULT_CLIENT_USERNAME,
@@ -255,31 +278,36 @@ class RouterService
                 continue;
             }
 
+            $serverInfo = $this->determineBandwidthServer($ipAddress);
+
             $clientError = null;
             $client = $this->makeMikroTikClient($router + ['ip_address' => $ipAddress], $clientError);
 
             if ($client === null) {
                 $results[] = [
-                    'router_name' => $router['name'] ?? $router['router_name'] ?? $ipAddress,
-                    'router_ip' => $ipAddress,
-                    'is_pppoe_server' => $usingClientSnapshot ? false : $this->isPppoeServer($router),
-                    'reachable' => false,
-                    'error' => $clientError,
-                    'interfaces' => [],
-                    'last_refreshed' => $timestamp,
-                    'notes' => $router['notes'] ?? '',
-                    'pppoe_profile' => $router['pppoe_profile'] ?? '',
-                    'pppoe_username' => $router['pppoe_username'] ?? '',
-                    'server_ip' => $router['server_ip'] ?? '',
-                    'server_name' => $router['server_name'] ?? '',
-                    'client_key' => $router['client_key'] ?? null,
-                    'preferred_interface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
-                    'iface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
-                    'link_capacity_mbps' => null,
-                ];
+                'router_name' => $router['name'] ?? $router['router_name'] ?? $ipAddress,
+                'router_ip' => $ipAddress,
+                'is_pppoe_server' => $usingClientSnapshot ? false : $this->isPppoeServer($router),
+                'reachable' => false,
+                'error' => $clientError,
+                'interfaces' => [],
+                'last_refreshed' => $timestamp,
+                'notes' => $router['notes'] ?? '',
+                'pppoe_profile' => $router['pppoe_profile'] ?? '',
+                'pppoe_username' => $router['pppoe_username'] ?? '',
+                'server_ip' => $serverInfo['ip'] ?? ($router['server_ip'] ?? ''),
+                'server_name' => $serverInfo['label'] ?? ($router['server_name'] ?? ''),
+                'server_source' => $serverInfo['source'] ?? null,
+                'client_key' => $router['client_key'] ?? null,
+                'preferred_interface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
+                'iface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
+                'link_capacity_mbps' => null,
+                'username' => $router['username'] ?? self::DEFAULT_CLIENT_USERNAME,
+                'password' => $router['password'] ?? self::DEFAULT_CLIENT_PASSWORD,
+            ];
 
-                continue;
-            }
+            continue;
+        }
 
             $interfacesResult = $client->getEthernetInterfaces();
             $interfaces = $interfacesResult['interfaces'] ?? [];
@@ -299,8 +327,9 @@ class RouterService
                 'notes' => $router['notes'] ?? '',
                 'pppoe_profile' => $router['pppoe_profile'] ?? '',
                 'pppoe_username' => $router['pppoe_username'] ?? '',
-                'server_ip' => $router['server_ip'] ?? '',
-                'server_name' => $router['server_name'] ?? '',
+                'server_ip' => $serverInfo['ip'] ?? ($router['server_ip'] ?? ''),
+                'server_name' => $serverInfo['label'] ?? ($router['server_name'] ?? ''),
+                'server_source' => $serverInfo['source'] ?? null,
                 'client_key' => $router['client_key'] ?? null,
                 'preferred_interface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
                 'iface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
@@ -308,6 +337,8 @@ class RouterService
                     $interfaces,
                     $router['preferred_interface'] ?? ($router['iface'] ?? '')
                 ),
+                'username' => $router['username'] ?? self::DEFAULT_CLIENT_USERNAME,
+                'password' => $router['password'] ?? self::DEFAULT_CLIENT_PASSWORD,
             ];
         }
 
@@ -319,6 +350,324 @@ class RouterService
             'source' => $usingClientSnapshot ? 'router_clients' : 'routers',
             'client_snapshot_generated_at' => $snapshot['generated_at'] ?? null,
             'data_files' => $this->describeInterfaceDataFiles($usingClientSnapshot),
+        ];
+    }
+
+    private function ensureBandwidthRateLimitFile(): void
+    {
+        $directory = dirname($this->bandwidthRateLimitPath);
+
+        if (!is_dir($directory)) {
+            @mkdir($directory, 0775, true);
+        }
+
+        if (!file_exists($this->bandwidthRateLimitPath)) {
+            file_put_contents($this->bandwidthRateLimitPath, json_encode(new \stdClass()));
+        }
+    }
+
+    private function getBandwidthRateLimitState(): array
+    {
+        if ($this->bandwidthRateLimitState !== null) {
+            return $this->bandwidthRateLimitState;
+        }
+
+        $this->ensureBandwidthRateLimitFile();
+
+        $contents = @file_get_contents($this->bandwidthRateLimitPath);
+
+        if ($contents === false || trim($contents) === '') {
+            $this->bandwidthRateLimitState = [];
+
+            return $this->bandwidthRateLimitState;
+        }
+
+        $decoded = json_decode($contents, true);
+
+        if (!is_array($decoded)) {
+            $decoded = [];
+        }
+
+        $this->bandwidthRateLimitState = $decoded;
+
+        return $this->bandwidthRateLimitState;
+    }
+
+    private function persistBandwidthRateLimitState(array $state): void
+    {
+        $this->bandwidthRateLimitState = $state;
+        $this->ensureBandwidthRateLimitFile();
+
+        file_put_contents(
+            $this->bandwidthRateLimitPath,
+            json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            LOCK_EX
+        );
+    }
+
+    private function updateBandwidthRateLimitRecord(string $routerIp, array $updates): void
+    {
+        $state = $this->getBandwidthRateLimitState();
+        $current = $state[$routerIp] ?? [];
+        $state[$routerIp] = array_merge($current, $updates);
+        $this->persistBandwidthRateLimitState($state);
+    }
+
+    private function getBandwidthRateLimitRecord(string $routerIp): array
+    {
+        $state = $this->getBandwidthRateLimitState();
+
+        return $state[$routerIp] ?? [];
+    }
+
+    private function formatIsoTimestamp(?int $timestamp): ?string
+    {
+        if ($timestamp === null || $timestamp <= 0) {
+            return null;
+        }
+
+        return date('c', $timestamp);
+    }
+
+    /**
+     * Menjalankan bandwidth test terhadap router tertentu dan mengembalikan
+     * ringkasan hasilnya sehingga dapat ditampilkan pada dashboard.
+     */
+    public function runBandwidthTestForRouter(string $routerIp, array $options = []): array
+    {
+        $routerIp = trim($routerIp);
+        $windowSeconds = self::BANDWIDTH_RATE_LIMIT_SECONDS;
+
+        if ($routerIp === '') {
+            return [
+                'success' => false,
+                'message' => 'Alamat IP router tidak valid.',
+                'rate_limit' => [
+                    'window_seconds' => $windowSeconds,
+                ],
+            ];
+        }
+
+        $router = $this->resolveRouterCredentialsForIp($routerIp);
+
+        if ($router === null) {
+            return [
+                'success' => false,
+                'message' => 'Router tidak ditemukan pada daftar penyimpanan.',
+                'rate_limit' => [
+                    'window_seconds' => $windowSeconds,
+                ],
+            ];
+        }
+
+        $serverInfo = $this->determineBandwidthServer($routerIp);
+
+        if (empty($serverInfo['ip'])) {
+            return [
+                'success' => false,
+                'router_ip' => $routerIp,
+                'message' => 'Server bandwidth test tidak ditemukan untuk router ini.',
+                'rate_limit' => [
+                    'window_seconds' => $windowSeconds,
+                ],
+            ];
+        }
+
+        if (empty($serverInfo['username']) || empty($serverInfo['password'])) {
+            return [
+                'success' => false,
+                'router_ip' => $routerIp,
+                'server_ip' => $serverInfo['ip'],
+                'message' => 'Kredensial bandwidth server tidak ditemukan. Perbarui berkas routers_server.json.',
+                'rate_limit' => [
+                    'window_seconds' => $windowSeconds,
+                ],
+            ];
+        }
+
+        $rateRecord = $this->getBandwidthRateLimitRecord($routerIp);
+        $lastStartedAt = isset($rateRecord['last_started_at']) ? (int) $rateRecord['last_started_at'] : null;
+        $lastCompletedAt = isset($rateRecord['last_completed_at']) ? (int) $rateRecord['last_completed_at'] : null;
+        $nextAvailableAt = isset($rateRecord['next_available_at']) ? (int) $rateRecord['next_available_at'] : null;
+
+        $rateLimitInfo = [
+            'window_seconds' => $windowSeconds,
+            'last_started_at' => $this->formatIsoTimestamp($lastStartedAt),
+            'last_completed_at' => $this->formatIsoTimestamp($lastCompletedAt),
+            'next_available_at' => $this->formatIsoTimestamp($nextAvailableAt),
+        ];
+
+        $now = time();
+
+        if ($nextAvailableAt !== null && $nextAvailableAt > $now) {
+            $retryAfter = max(1, $nextAvailableAt - $now);
+
+            return [
+                'success' => false,
+                'router_ip' => $routerIp,
+                'message' => sprintf('Bandwidth test baru dijalankan. Coba lagi dalam %d detik.', $retryAfter),
+                'retry_after' => $retryAfter,
+                'rate_limit' => $rateLimitInfo,
+            ];
+        }
+
+        if ($lastStartedAt !== null && ($now - $lastStartedAt) < $windowSeconds) {
+            $retryAfter = max(1, $windowSeconds - ($now - $lastStartedAt));
+            $rateLimitInfo['next_available_at'] = $this->formatIsoTimestamp($lastStartedAt + $windowSeconds);
+
+            return [
+                'success' => false,
+                'router_ip' => $routerIp,
+                'message' => sprintf('Bandwidth test baru dijalankan. Coba lagi dalam %d detik.', $retryAfter),
+                'retry_after' => $retryAfter,
+                'rate_limit' => $rateLimitInfo,
+            ];
+        }
+
+        $clientError = null;
+        $client = $this->makeMikroTikClient($router, $clientError);
+
+        if ($client === null) {
+            return [
+                'success' => false,
+                'router_ip' => $routerIp,
+                'message' => $clientError ?? 'Dependensi MikroTikClient belum tersedia.',
+                'rate_limit' => $rateLimitInfo,
+            ];
+        }
+
+        $duration = isset($options['duration']) ? max(1, min(60, (int) $options['duration'])) : null;
+        $connectionCount = isset($options['connection_count']) ? max(1, (int) $options['connection_count']) : null;
+        $directionInfo = $this->normaliseBandwidthDirection($options['direction'] ?? null);
+
+        $protocol = strtolower((string) ($options['protocol'] ?? 'tcp'));
+
+        if (!in_array($protocol, ['tcp', 'udp'], true)) {
+            $protocol = 'tcp';
+        }
+
+        $payload = [
+            'address' => $serverInfo['ip'],
+            'user' => $serverInfo['username'],
+            'password' => $serverInfo['password'],
+            'protocol' => $protocol,
+            'direction' => $directionInfo['router'],
+        ];
+
+        if ($duration !== null) {
+            $payload['duration'] = (string) $duration;
+        }
+
+        if ($connectionCount !== null) {
+            $payload['connection-count'] = (string) $connectionCount;
+        }
+
+        $startedAt = time();
+        $nextAvailableAfterStart = $startedAt + $windowSeconds;
+
+        $this->updateBandwidthRateLimitRecord($routerIp, [
+            'last_started_at' => $startedAt,
+            'last_started_at_iso' => $this->formatIsoTimestamp($startedAt),
+            'next_available_at' => $nextAvailableAfterStart,
+            'next_available_at_iso' => $this->formatIsoTimestamp($nextAvailableAfterStart),
+            'window_seconds' => $windowSeconds,
+            'last_status' => 'running',
+            'last_error' => null,
+        ]);
+
+        $rateLimitInfo['last_started_at'] = $this->formatIsoTimestamp($startedAt);
+        $rateLimitInfo['next_available_at'] = $this->formatIsoTimestamp($nextAvailableAfterStart);
+
+        $result = $client->runBandwidthTest($payload);
+
+        $completedAtFallback = time();
+        $resultStartedIso = isset($result['started_at']) ? (string) $result['started_at'] : date('c', $startedAt);
+        $resultCompletedIso = isset($result['completed_at']) ? (string) $result['completed_at'] : date('c', $completedAtFallback);
+        $parsedCompleted = strtotime($resultCompletedIso);
+
+        if ($parsedCompleted === false) {
+            $parsedCompleted = $completedAtFallback;
+        }
+
+        $finalNextAvailable = max($nextAvailableAfterStart, $parsedCompleted);
+
+        if (empty($result['success'])) {
+            $message = $result['error'] ?? $client->getLastError() ?? 'Bandwidth test gagal dijalankan.';
+
+            $this->updateBandwidthRateLimitRecord($routerIp, [
+                'last_completed_at' => $parsedCompleted,
+                'last_completed_at_iso' => $this->formatIsoTimestamp($parsedCompleted),
+                'next_available_at' => $finalNextAvailable,
+                'next_available_at_iso' => $this->formatIsoTimestamp($finalNextAvailable),
+                'last_status' => 'error',
+                'last_error' => $message,
+            ]);
+
+            $rateLimitInfo['last_completed_at'] = $this->formatIsoTimestamp($parsedCompleted);
+            $rateLimitInfo['next_available_at'] = $this->formatIsoTimestamp($finalNextAvailable);
+
+            return [
+                'success' => false,
+                'router_ip' => $routerIp,
+                'server_ip' => $serverInfo['ip'],
+                'message' => $message,
+                'rate_limit' => $rateLimitInfo,
+                'raw_response' => $result,
+                'raw_replies' => $result['raw_replies'] ?? [],
+            ];
+        }
+
+        $entries = isset($result['entries']) && is_array($result['entries']) ? $result['entries'] : [];
+        $summary = $this->summariseBandwidthEntries($entries, $result);
+
+        $this->updateBandwidthRateLimitRecord($routerIp, [
+            'last_completed_at' => $parsedCompleted,
+            'last_completed_at_iso' => $this->formatIsoTimestamp($parsedCompleted),
+            'next_available_at' => $finalNextAvailable,
+            'next_available_at_iso' => $this->formatIsoTimestamp($finalNextAvailable),
+            'last_status' => 'success',
+            'last_error' => null,
+            'last_summary' => [
+                'tx_current_bps' => $summary['tx_current_bps'] ?? 0,
+                'rx_current_bps' => $summary['rx_current_bps'] ?? 0,
+                'tx_total_average_bps' => $summary['tx_total_average_bps'] ?? 0,
+                'rx_total_average_bps' => $summary['rx_total_average_bps'] ?? 0,
+                'tx_peak_bps' => $summary['tx_peak_bps'] ?? 0,
+                'rx_peak_bps' => $summary['rx_peak_bps'] ?? 0,
+                'direction' => $directionInfo['value'],
+                'protocol' => strtoupper($protocol),
+                'duration' => $duration,
+            ],
+        ]);
+
+        $rateLimitInfo['last_completed_at'] = $this->formatIsoTimestamp($parsedCompleted);
+        $rateLimitInfo['next_available_at'] = $this->formatIsoTimestamp($finalNextAvailable);
+
+        return [
+            'success' => true,
+            'router_ip' => $routerIp,
+            'router_name' => $router['name'] ?? $routerIp,
+            'server_ip' => $serverInfo['ip'],
+            'server_label' => $serverInfo['label'] ?? $serverInfo['ip'],
+            'server_source' => $serverInfo['source'] ?? null,
+            'server_username' => $serverInfo['username'] ?? null,
+            'options' => [
+                'protocol' => strtoupper((string) ($payload['protocol'] ?? 'tcp')),
+                'direction' => $directionInfo['display'],
+                'direction_value' => $directionInfo['value'],
+                'duration' => isset($payload['duration']) ? (int) $payload['duration'] : null,
+                'connection_count' => isset($payload['connection-count']) ? (int) $payload['connection-count'] : null,
+                'server_ip' => $serverInfo['ip'],
+                'server_username' => $serverInfo['username'] ?? null,
+            ],
+            'summary' => $summary,
+            'entries' => $entries,
+            'started_at' => $resultStartedIso,
+            'completed_at' => $resultCompletedIso,
+            'interface' => $options['interface'] ?? ($router['preferred_interface'] ?? ''),
+            'rate_limit' => $rateLimitInfo,
+            'raw_response' => $result,
+            'raw_replies' => $result['raw_replies'] ?? [],
         ];
     }
 
@@ -833,6 +1182,327 @@ class RouterService
         }
 
         return strtolower(uniqid('client_', true));
+    }
+
+    private function resolveRouterCredentialsForIp(string $ipAddress): ?array
+    {
+        $ipAddress = trim($ipAddress);
+
+        if ($ipAddress === '') {
+            return null;
+        }
+
+        $snapshot = $this->getRouterClientSnapshot();
+
+        $normalise = function (array $entry, string $ip) {
+            $username = $entry['user']
+                ?? $entry['username']
+                ?? $entry['pppoe_username']
+                ?? self::DEFAULT_CLIENT_USERNAME;
+            $password = $entry['pass']
+                ?? $entry['password']
+                ?? self::DEFAULT_CLIENT_PASSWORD;
+
+            $record = [
+                'name' => $entry['name']
+                    ?? $entry['router_name']
+                    ?? $entry['client_name']
+                    ?? $ip,
+                'ip_address' => $ip,
+                'username' => $username,
+                'password' => $password,
+                'notes' => $entry['notes'] ?? $entry['comment'] ?? '',
+                'server_ip' => $entry['server_ip'] ?? '',
+                'server_name' => $entry['server_name'] ?? '',
+                'preferred_interface' => $entry['preferred_interface'] ?? ($entry['iface'] ?? ''),
+            ];
+
+            if (isset($entry['bandwidth_user'])) {
+                $record['bandwidth_user'] = $entry['bandwidth_user'];
+            }
+
+            if (isset($entry['bandwidth_password'])) {
+                $record['bandwidth_password'] = $entry['bandwidth_password'];
+            }
+
+            $record['client_key'] = $entry['client_key'] ?? $this->normaliseRouterClientKey([
+                'ip_address' => $ip,
+                'username' => $username,
+                'server_ip' => $record['server_ip'],
+            ]);
+
+            return $record;
+        };
+
+        if (isset($snapshot['routers']) && is_array($snapshot['routers'])) {
+            foreach ($snapshot['routers'] as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+
+                $entryIp = trim((string) ($entry['ip'] ?? $entry['ip_address'] ?? ''));
+
+                if ($entryIp === $ipAddress) {
+                    return $normalise($entry, $entryIp);
+                }
+            }
+        }
+
+        if (isset($snapshot['clients']) && is_array($snapshot['clients'])) {
+            foreach ($snapshot['clients'] as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+
+                $entryIp = trim((string) ($entry['ip_address'] ?? $entry['client_address'] ?? ''));
+
+                if ($entryIp === $ipAddress) {
+                    return $normalise($entry, $entryIp);
+                }
+            }
+        }
+
+        $repositoryRouter = $this->findRouterByIp($ipAddress);
+
+        if ($repositoryRouter !== null) {
+            return $normalise($repositoryRouter, $ipAddress);
+        }
+
+        return null;
+    }
+
+    private function determineBandwidthServer(string $routerIp): array
+    {
+        $serverIp = $this->mapRouterIpToServerIp($routerIp);
+
+        if ($serverIp === null) {
+            return ['ip' => null, 'label' => null, 'source' => null];
+        }
+
+        $server = $this->findBandwidthServerByIp($serverIp);
+
+        if ($server === null) {
+            return [
+                'ip' => $serverIp,
+                'label' => $serverIp,
+                'source' => 'network_prefix',
+                'username' => null,
+                'password' => null,
+            ];
+        }
+
+        return [
+            'ip' => $serverIp,
+            'label' => $server['name'] ?? $serverIp,
+            'source' => 'network_prefix',
+            'username' => $server['username'] ?? null,
+            'password' => $server['password'] ?? null,
+        ];
+    }
+
+    private function mapRouterIpToServerIp(string $routerIp): ?string
+    {
+        $routerIp = trim($routerIp);
+
+        if ($routerIp === '') {
+            return null;
+        }
+
+        if (preg_match('/^172\.16\.30\./', $routerIp)) {
+            return '172.16.30.1';
+        }
+
+        if (preg_match('/^172\.16\.40\./', $routerIp)) {
+            return '172.16.40.1';
+        }
+
+        return null;
+    }
+
+    private function findBandwidthServerByIp(string $serverIp): ?array
+    {
+        $servers = $this->loadBandwidthServers();
+
+        return $servers[$serverIp] ?? null;
+    }
+
+    private function loadBandwidthServers(): array
+    {
+        if ($this->cachedBandwidthServers !== null) {
+            return $this->cachedBandwidthServers;
+        }
+
+        if (!file_exists($this->serverStoragePath)) {
+            $this->cachedBandwidthServers = [];
+
+            return $this->cachedBandwidthServers;
+        }
+
+        $raw = file_get_contents($this->serverStoragePath);
+        $decoded = json_decode($raw, true);
+
+        if (!is_array($decoded)) {
+            $this->cachedBandwidthServers = [];
+
+            return $this->cachedBandwidthServers;
+        }
+
+        $servers = [];
+        $entries = [];
+
+        if (isset($decoded['servers']) && is_array($decoded['servers'])) {
+            $entries = $decoded['servers'];
+        } elseif (isset($decoded[0])) {
+            $entries = $decoded;
+        }
+
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $ip = trim((string) ($entry['ip'] ?? $entry['address'] ?? ''));
+
+            if ($ip === '' || !filter_var($ip, FILTER_VALIDATE_IP)) {
+                continue;
+            }
+
+            $servers[$ip] = [
+                'name' => $entry['name'] ?? $entry['label'] ?? $ip,
+                'username' => $entry['username'] ?? $entry['user'] ?? null,
+                'password' => $entry['password'] ?? $entry['pass'] ?? null,
+            ];
+        }
+
+        $this->cachedBandwidthServers = $servers;
+
+        return $this->cachedBandwidthServers;
+    }
+
+    private function summariseBandwidthEntries(array $entries, array $result): array
+    {
+        $txCurrent = (int) ($result['tx_current_bps'] ?? 0);
+        $rxCurrent = (int) ($result['rx_current_bps'] ?? 0);
+        $txAverage = (int) ($result['tx_total_average_bps'] ?? 0);
+        $rxAverage = (int) ($result['rx_total_average_bps'] ?? 0);
+        $txPeak = (int) ($result['tx_peak_bps'] ?? 0);
+        $rxPeak = (int) ($result['rx_peak_bps'] ?? 0);
+
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $entryTxCandidates = [
+                (int) ($entry['tx_current_bps'] ?? 0),
+                (int) ($entry['tx_total_average_bps'] ?? 0),
+                (int) ($entry['tcp_write_bps'] ?? 0),
+                (int) ($entry['udp_write_bps'] ?? 0),
+            ];
+            $entryRxCandidates = [
+                (int) ($entry['rx_current_bps'] ?? 0),
+                (int) ($entry['rx_total_average_bps'] ?? 0),
+                (int) ($entry['tcp_read_bps'] ?? 0),
+                (int) ($entry['udp_read_bps'] ?? 0),
+            ];
+
+            $entryTxCurrent = max($entryTxCandidates);
+            $entryRxCurrent = max($entryRxCandidates);
+            $entryTxAverage = max((int) ($entry['tx_total_average_bps'] ?? 0), (int) ($entry['tcp_write_bps'] ?? 0), (int) ($entry['udp_write_bps'] ?? 0));
+            $entryRxAverage = max((int) ($entry['rx_total_average_bps'] ?? 0), (int) ($entry['tcp_read_bps'] ?? 0), (int) ($entry['udp_read_bps'] ?? 0));
+
+            if ($entryTxCurrent > 0) {
+                $txCurrent = $entryTxCurrent;
+            }
+
+            if ($entryRxCurrent > 0) {
+                $rxCurrent = $entryRxCurrent;
+            }
+
+            if ($entryTxAverage > 0) {
+                $txAverage = $entryTxAverage;
+            }
+
+            if ($entryRxAverage > 0) {
+                $rxAverage = $entryRxAverage;
+            }
+
+            $txPeak = max($txPeak, ...$entryTxCandidates);
+            $rxPeak = max($rxPeak, ...$entryRxCandidates);
+        }
+
+        return [
+            'tx_current_bps' => $txCurrent,
+            'tx_current_label' => $this->formatBitsPerSecond($txCurrent),
+            'rx_current_bps' => $rxCurrent,
+            'rx_current_label' => $this->formatBitsPerSecond($rxCurrent),
+            'tx_total_average_bps' => $txAverage,
+            'tx_total_average_label' => $this->formatBitsPerSecond($txAverage),
+            'rx_total_average_bps' => $rxAverage,
+            'rx_total_average_label' => $this->formatBitsPerSecond($rxAverage),
+            'tx_peak_bps' => $txPeak,
+            'tx_peak_label' => $this->formatBitsPerSecond($txPeak),
+            'rx_peak_bps' => $rxPeak,
+            'rx_peak_label' => $this->formatBitsPerSecond($rxPeak),
+        ];
+    }
+
+    private function normaliseBandwidthDirection($direction): array
+    {
+        $value = strtolower(trim((string) $direction));
+
+        switch ($value) {
+            case 'tx':
+            case 'transmit':
+                return [
+                    'value' => 'tx',
+                    'router' => 'transmit',
+                    'display' => 'TX',
+                ];
+            case 'rx':
+            case 'receive':
+                return [
+                    'value' => 'rx',
+                    'router' => 'receive',
+                    'display' => 'RX',
+                ];
+            case 'both':
+            case 'txrx':
+            case 'rtx':
+                return [
+                    'value' => 'both',
+                    'router' => 'both',
+                    'display' => 'BOTH',
+                ];
+        }
+
+        if ($value === '') {
+            return [
+                'value' => 'both',
+                'router' => 'both',
+                'display' => 'BOTH',
+            ];
+        }
+
+        return [
+            'value' => 'both',
+            'router' => 'both',
+            'display' => strtoupper($value),
+        ];
+    }
+
+    private function formatBitsPerSecond(int $bitsPerSecond): string
+    {
+        if ($bitsPerSecond <= 0) {
+            return '0 bps';
+        }
+
+        $units = ['bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps'];
+        $exponent = (int) floor(log($bitsPerSecond, 1000));
+        $exponent = max(0, min($exponent, count($units) - 1));
+        $value = $bitsPerSecond / (1000 ** $exponent);
+
+        return sprintf('%s %s', $exponent === 0 ? number_format($value, 0, '.', '') : number_format($value, 2, '.', ''), $units[$exponent]);
     }
 
     private function ensureRouterClientKey(array &$client, array &$usedKeys): string

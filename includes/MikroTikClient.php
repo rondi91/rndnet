@@ -276,6 +276,184 @@ class MikroTikClient
     }
 
     /**
+     * Menjalankan bandwidth test RouterOS terhadap alamat tujuan tertentu.
+     * Method ini akan mengirim perintah `/tool/bandwidth-test` dan
+     * mengembalikan ringkasan hasil pengujian.
+     */
+    public function runBandwidthTest(array $parameters): array
+    {
+        if (!$this->connect()) {
+            return [
+                'success' => false,
+                'error' => $this->lastError ?? 'Gagal terhubung ke router.',
+            ];
+        }
+
+        $address = trim((string) ($parameters['address'] ?? ''));
+
+        if ($address === '') {
+            return [
+                'success' => false,
+                'error' => 'Alamat server bandwidth test wajib diisi.',
+            ];
+        }
+
+        $direction = $this->normaliseBandwidthDirection($parameters['direction'] ?? 'both');
+        $protocol = $this->normaliseBandwidthProtocol($parameters['protocol'] ?? 'tcp');
+        $username = trim((string) ($parameters['user'] ?? $this->username));
+        $password = (string) ($parameters['password'] ?? $this->password);
+        $durationSeconds = $this->normaliseBandwidthDurationSeconds(
+            $parameters['duration'] ?? $parameters['duration_seconds'] ?? null
+        );
+        $connectionCount = $this->normaliseBandwidthConnectionCount(
+            $parameters['connection-count'] ?? $parameters['connection_count'] ?? null
+        );
+
+        $payload = [
+            'address' => $address,
+            'user' => $username !== '' ? $username : $this->username,
+            'password' => $password,
+            'direction' => $direction,
+            'protocol' => $protocol,
+        ];
+
+        if ($durationSeconds !== null) {
+            $payload['duration'] = (string) $durationSeconds;
+            $payload['duration_seconds'] = $durationSeconds;
+        }
+
+        if ($connectionCount !== null) {
+            $payload['connection-count'] = (string) $connectionCount;
+        }
+
+        if (isset($parameters['local-test']) || isset($parameters['local_test'])) {
+            $localTest = $parameters['local-test'] ?? $parameters['local_test'];
+            $payload['local-test'] = $this->isTruthy($localTest) ? 'yes' : 'no';
+        }
+
+        $query = new Query('/tool/bandwidth-test');
+        $query->equal('address', $payload['address']);
+        $query->equal('user', $payload['user']);
+
+        if ($payload['password'] !== '') {
+            $query->equal('password', $payload['password']);
+        }
+
+        $query->equal('direction', $payload['direction']);
+        $query->equal('protocol', $payload['protocol']);
+
+        if (isset($payload['duration'])) {
+            $query->equal('duration', $payload['duration']);
+        }
+
+        if (isset($payload['connection-count'])) {
+            $query->equal('connection-count', $payload['connection-count']);
+        }
+
+        if (isset($payload['local-test'])) {
+            $query->equal('local-test', $payload['local-test']);
+        }
+
+        $startedAt = date('c');
+
+        try {
+            $response = $this->client->query($query)->read();
+            $this->lastError = null;
+        } catch (\Throwable $exception) {
+            $this->lastError = $exception->getMessage();
+
+            return [
+                'success' => false,
+                'error' => $this->lastError,
+            ];
+        }
+
+        $entries = [];
+        $txPeak = 0;
+        $rxPeak = 0;
+        $errors = [];
+
+        foreach ($response as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $rowData = $this->unwrapBandwidthTestReply($row, $errors);
+
+            if ($rowData === null || !is_array($rowData) || $rowData === []) {
+                continue;
+            }
+
+            $normalised = $this->normaliseBandwidthTestRow($rowData);
+            $entries[] = $normalised;
+
+            $txPeak = max($txPeak, $normalised['tx_current_bps'], $normalised['tx_total_average_bps']);
+            $rxPeak = max($rxPeak, $normalised['rx_current_bps'], $normalised['rx_total_average_bps']);
+        }
+
+        if (!empty($errors) && empty($entries)) {
+            $message = implode(' | ', array_unique(array_filter($errors)));
+
+            if ($message === '') {
+                $message = 'Router mengembalikan kesalahan saat menjalankan bandwidth test.';
+            }
+
+            $this->lastError = $message;
+
+            return [
+                'success' => false,
+                'error' => $message,
+                'payload' => $payload,
+                'address' => $address,
+                'raw_replies' => $response,
+            ];
+        }
+
+        if (empty($entries)) {
+            $message = 'Router tidak mengembalikan data hasil bandwidth test. Pastikan bandwidth-server aktif dan kredensial benar.';
+
+            $this->lastError = $message;
+
+            return [
+                'success' => false,
+                'error' => $message,
+                'payload' => $payload,
+                'address' => $address,
+                'raw_replies' => $response,
+            ];
+        }
+
+        $lastEntry = end($entries) ?: [
+            'tx_current_bps' => 0,
+            'rx_current_bps' => 0,
+            'tx_total_average_bps' => 0,
+            'rx_total_average_bps' => 0,
+        ];
+
+        return [
+            'success' => true,
+            'entries' => $entries,
+            'payload' => $payload,
+            'address' => $address,
+            'tx_peak_bps' => $txPeak,
+            'rx_peak_bps' => $rxPeak,
+            'tx_peak_label' => $this->formatBitsPerSecond($txPeak),
+            'rx_peak_label' => $this->formatBitsPerSecond($rxPeak),
+            'tx_current_bps' => $lastEntry['tx_current_bps'] ?? 0,
+            'rx_current_bps' => $lastEntry['rx_current_bps'] ?? 0,
+            'tx_current_label' => $lastEntry['tx_current_label'] ?? '0 bps',
+            'rx_current_label' => $lastEntry['rx_current_label'] ?? '0 bps',
+            'tx_total_average_bps' => $lastEntry['tx_total_average_bps'] ?? 0,
+            'rx_total_average_bps' => $lastEntry['rx_total_average_bps'] ?? 0,
+            'tx_total_average_label' => $lastEntry['tx_total_average_label'] ?? '0 bps',
+            'rx_total_average_label' => $lastEntry['rx_total_average_label'] ?? '0 bps',
+            'started_at' => $startedAt,
+            'completed_at' => date('c'),
+            'raw_replies' => $response,
+        ];
+    }
+
+    /**
      * Mengambil statistik realtime interface menggunakan perintah
      * `/interface/monitor-traffic` sebagaimana pada contoh `traffic_lib.php`.
      */
@@ -456,6 +634,111 @@ class MikroTikClient
         return round($bps / 1_000_000, 2);
     }
 
+    private function unwrapBandwidthTestReply(array $reply, array &$errors): ?array
+    {
+        $errorMessage = $this->detectBandwidthReplyError($reply);
+
+        if ($errorMessage !== null) {
+            $errors[] = $errorMessage;
+
+            return null;
+        }
+
+        if (isset($reply['!re']) && is_array($reply['!re'])) {
+            $clean = $this->stripRouterOsControlFields($reply['!re']);
+
+            return $clean === [] ? null : $clean;
+        }
+
+        if (isset($reply['!done']) && is_array($reply['!done'])) {
+            $clean = $this->stripRouterOsControlFields($reply['!done']);
+
+            return $clean === [] ? null : $clean;
+        }
+
+        $clean = $this->stripRouterOsControlFields($reply);
+
+        return $clean === [] ? null : $clean;
+    }
+
+    private function detectBandwidthReplyError(array $reply): ?string
+    {
+        foreach (['!fatal', '!trap'] as $errorKey) {
+            if (array_key_exists($errorKey, $reply)) {
+                $segment = $reply[$errorKey];
+                $message = $this->extractRouterOsMessage($segment);
+
+                if ($message === null) {
+                    $message = $this->extractRouterOsMessage($reply);
+                }
+
+                return $message ?? 'RouterOS mengembalikan kesalahan saat menjalankan bandwidth test.';
+            }
+        }
+
+        if (isset($reply['error']) && trim((string) $reply['error']) !== '') {
+            return trim((string) $reply['error']);
+        }
+
+        return null;
+    }
+
+    private function extractRouterOsMessage($segment): ?string
+    {
+        if (is_string($segment) && trim($segment) !== '') {
+            return trim($segment);
+        }
+
+        if (!is_array($segment)) {
+            return null;
+        }
+
+        $candidates = ['message', 'error', 'reason', '=message', '=error', '=reason'];
+
+        foreach ($candidates as $key) {
+            if (isset($segment[$key]) && trim((string) $segment[$key]) !== '') {
+                return trim((string) $segment[$key]);
+            }
+        }
+
+        $values = [];
+
+        foreach ($segment as $value) {
+            if (is_scalar($value) && trim((string) $value) !== '') {
+                $values[] = trim((string) $value);
+            }
+        }
+
+        if (!empty($values)) {
+            return implode(' | ', array_unique($values));
+        }
+
+        return null;
+    }
+
+    private function stripRouterOsControlFields(array $row): array
+    {
+        $clean = [];
+
+        foreach ($row as $key => $value) {
+            if (!is_string($key)) {
+                continue;
+            }
+
+            if ($key === 'tag' || $key === '.tag') {
+                continue;
+            }
+
+            if ($key !== '' && $key[0] === '!') {
+                continue;
+            }
+
+            $clean[$key] = $value;
+        }
+
+        return $clean;
+    }
+
     /**
      * Menghapus PPPoE secret berdasarkan ID unik yang diberikan RouterOS.
      */
@@ -492,6 +775,215 @@ class MikroTikClient
         $normalized = strtolower((string) $value);
 
         return in_array($normalized, ['1', 'true', 'yes', 'on', 'running'], true);
+    }
+
+    /**
+     * Menyederhanakan hasil balikan `/tool/bandwidth-test` ke struktur yang
+     * konsisten berupa angka bps dan label siap pakai.
+     */
+    private function normaliseBandwidthTestRow(array $row): array
+    {
+        [$txCurrent, $txCurrentSource] = $this->extractBandwidthRate($row, [
+            'tx-current',
+            'tx-current-bits-per-second',
+            'tx-current-bps',
+            'tx-bits-per-second',
+            'tx-bit-rate',
+            'tx-rate',
+            'tcp-write',
+            'udp-write',
+            'tx-total-average',
+            'tx-total-average-bits-per-second',
+        ]);
+
+        [$rxCurrent, $rxCurrentSource] = $this->extractBandwidthRate($row, [
+            'rx-current',
+            'rx-current-bits-per-second',
+            'rx-current-bps',
+            'rx-bits-per-second',
+            'rx-bit-rate',
+            'rx-rate',
+            'tcp-read',
+            'udp-read',
+            'rx-total-average',
+            'rx-total-average-bits-per-second',
+        ]);
+
+        [$txTotalAverage, $txAverageSource] = $this->extractBandwidthRate($row, [
+            'tx-total-average',
+            'tx-total-average-bits-per-second',
+            'tx-total-bps',
+            'tx-total-rate',
+            'tcp-write',
+            'udp-write',
+            'tx-current',
+            'tx-current-bits-per-second',
+            'tx-bits-per-second',
+        ]);
+
+        [$rxTotalAverage, $rxAverageSource] = $this->extractBandwidthRate($row, [
+            'rx-total-average',
+            'rx-total-average-bits-per-second',
+            'rx-total-bps',
+            'rx-total-rate',
+            'tcp-read',
+            'udp-read',
+            'rx-current',
+            'rx-current-bits-per-second',
+            'rx-bits-per-second',
+        ]);
+
+        $tcpWriteBps = $this->parseBitsPerSecondValue($row['tcp-write'] ?? 0);
+        $tcpReadBps = $this->parseBitsPerSecondValue($row['tcp-read'] ?? 0);
+        $udpWriteBps = $this->parseBitsPerSecondValue($row['udp-write'] ?? 0);
+        $udpReadBps = $this->parseBitsPerSecondValue($row['udp-read'] ?? 0);
+
+        return [
+            'status' => $row['status'] ?? null,
+            'direction' => $row['direction'] ?? null,
+            'protocol' => $row['protocol'] ?? null,
+            'time_remaining' => $row['time-remaining'] ?? $row['time_remaining'] ?? null,
+            'tx_current_bps' => $txCurrent,
+            'rx_current_bps' => $rxCurrent,
+            'tx_total_average_bps' => $txTotalAverage,
+            'rx_total_average_bps' => $rxTotalAverage,
+            'tx_current_source' => $txCurrentSource,
+            'rx_current_source' => $rxCurrentSource,
+            'tx_average_source' => $txAverageSource,
+            'rx_average_source' => $rxAverageSource,
+            'tx_current_label' => $this->formatBitsPerSecond($txCurrent),
+            'rx_current_label' => $this->formatBitsPerSecond($rxCurrent),
+            'tx_total_average_label' => $this->formatBitsPerSecond($txTotalAverage),
+            'rx_total_average_label' => $this->formatBitsPerSecond($rxTotalAverage),
+            'tcp_read' => $row['tcp-read'] ?? null,
+            'tcp_write' => $row['tcp-write'] ?? null,
+            'udp_read' => $row['udp-read'] ?? null,
+            'udp_write' => $row['udp-write'] ?? null,
+            'tcp_read_bps' => $tcpReadBps,
+            'tcp_write_bps' => $tcpWriteBps,
+            'udp_read_bps' => $udpReadBps,
+            'udp_write_bps' => $udpWriteBps,
+            'tcp_read_label' => $this->formatBitsPerSecond($tcpReadBps),
+            'tcp_write_label' => $this->formatBitsPerSecond($tcpWriteBps),
+            'udp_read_label' => $this->formatBitsPerSecond($udpReadBps),
+            'udp_write_label' => $this->formatBitsPerSecond($udpWriteBps),
+            'local_address' => $row['local-address'] ?? null,
+            'remote_address' => $row['remote-address'] ?? $row['address'] ?? null,
+            'when' => date('c'),
+        ];
+    }
+
+    /**
+     * Memilih nilai laju bandwidth terbaik dari beberapa kandidat field yang
+     * mungkin dikirim RouterOS. Mengembalikan pasangan [nilai_bps, sumber].
+     */
+    private function extractBandwidthRate(array $row, array $candidateKeys): array
+    {
+        $bestValue = 0;
+        $bestSource = null;
+
+        foreach ($candidateKeys as $key) {
+            if (!array_key_exists($key, $row)) {
+                continue;
+            }
+
+            $value = $this->parseBitsPerSecondValue($row[$key]);
+
+            if ($value > $bestValue) {
+                $bestValue = $value;
+                $bestSource = $key;
+            }
+        }
+
+        return [$bestValue, $bestSource];
+    }
+
+    private function normaliseBandwidthProtocol($value): string
+    {
+        $normalized = strtolower(trim((string) $value));
+
+        return $normalized === 'udp' ? 'udp' : 'tcp';
+    }
+
+    private function normaliseBandwidthDirection($value): string
+    {
+        $normalized = strtolower(trim((string) $value));
+
+        switch ($normalized) {
+            case 'tx':
+            case 'transmit':
+                return 'transmit';
+            case 'rx':
+            case 'receive':
+                return 'receive';
+            default:
+                return 'both';
+        }
+    }
+
+    private function normaliseBandwidthDurationSeconds($value): ?int
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_int($value)) {
+            $seconds = $value;
+        } else {
+            $stringValue = trim((string) $value);
+
+            if ($stringValue === '') {
+                return null;
+            }
+
+            if (preg_match('/^(\d{1,2}):(\d{2}):(\d{2})$/', $stringValue, $matches)) {
+                $seconds = ((int) $matches[1] * 3600)
+                    + ((int) $matches[2] * 60)
+                    + (int) $matches[3];
+            } elseif (preg_match('/^(\d+)(s)?$/i', $stringValue, $matches)) {
+                $seconds = (int) $matches[1];
+            } elseif (is_numeric($stringValue)) {
+                $seconds = (int) $stringValue;
+            } else {
+                return null;
+            }
+        }
+
+        if ($seconds <= 0) {
+            return null;
+        }
+
+        return max(1, min(60, $seconds));
+    }
+
+    private function normaliseBandwidthConnectionCount($value): ?int
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value) && trim($value) === '') {
+            return null;
+        }
+
+        $count = (int) $value;
+
+        if ($count <= 0) {
+            return null;
+        }
+
+        return max(1, min(100, $count));
+    }
+
+    private function isTruthy($value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        $normalized = strtolower(trim((string) $value));
+
+        return in_array($normalized, ['1', 'true', 'yes', 'on'], true);
     }
 
     /**

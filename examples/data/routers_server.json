@@ -1,0 +1,17 @@
+
+{
+    "servers": [
+        {
+            "ip": "172.16.30.1",
+            "name": "Bandwidth Server 30",
+            "username": "srv30",
+            "password": "srv30pass"
+        },
+        {
+            "ip": "172.16.40.1",
+            "name": "Bandwidth Server 40",
+            "username": "srv40",
+            "password": "srv40pass"
+        }
+    ]
+}
