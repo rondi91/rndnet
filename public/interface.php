@@ -1,3 +1,4 @@
+
 <?php
 require_once __DIR__ . '/../includes/RouterService.php';
 
@@ -294,6 +295,104 @@ document.addEventListener('DOMContentLoaded', () => {
 
             return routerIp !== '' && routerIp === target;
         }) || null;
+    };
+
+    const updateLocalPreferredInterface = (routerKey, interfaceName, options = {}) => {
+        const { clientKey = '', routerIp = '' } = options;
+        const preferred = typeof interfaceName === 'string' ? interfaceName : '';
+        const routerState = routerKey ? findRouterStateByKey(routerKey) : null;
+
+        if (routerState) {
+            routerState.preferred_interface = preferred;
+            routerState.iface = preferred;
+        }
+
+        const targetKey = String(clientKey ?? '').toLowerCase();
+        const targetIp = String(routerIp ?? '').toLowerCase();
+
+        if (clientsState && Array.isArray(clientsState.clients)) {
+            clientsState.clients = clientsState.clients.map((client) => {
+                if (!client) {
+                    return client;
+                }
+
+                const clientKeyValue = String(client.client_key ?? buildClientKey(client) ?? '').toLowerCase();
+                const clientIp = String(client.ip_address ?? client.address ?? client.ip ?? '').toLowerCase();
+
+                const matchesKey = targetKey !== '' && clientKeyValue === targetKey;
+                const matchesIp = targetKey === '' && targetIp !== '' && clientIp === targetIp;
+
+                if (!matchesKey && !matchesIp) {
+                    return client;
+                }
+
+                const next = { ...client };
+
+                if (preferred === '') {
+                    delete next.preferred_interface;
+                    delete next.iface;
+                } else {
+                    next.preferred_interface = preferred;
+                    next.iface = preferred;
+                }
+
+                return next;
+            });
+        }
+    };
+
+    const applyRouterClientSnapshot = (snapshot) => {
+        if (!snapshot || typeof snapshot !== 'object') {
+            return;
+        }
+
+        if (Array.isArray(snapshot.clients)) {
+            clientsState.clients = snapshot.clients;
+        }
+
+        if (!state || !Array.isArray(state.routers) || !Array.isArray(snapshot.routers)) {
+            return;
+        }
+
+        const lookup = new Map();
+
+        snapshot.routers.forEach((item) => {
+            if (!item) {
+                return;
+            }
+
+            const key = String(item.client_key ?? '').toLowerCase()
+                || String(item.ip ?? item.ip_address ?? '').toLowerCase();
+
+            if (key) {
+                lookup.set(key, item);
+            }
+        });
+
+        state.routers.forEach((router) => {
+            if (!router) {
+                return;
+            }
+
+            const stateKey = String(
+                router.client_key ?? router.router_ip ?? router.ip ?? router.ip_address ?? ''
+            ).toLowerCase();
+
+            if (!stateKey) {
+                return;
+            }
+
+            const snapshotRouter = lookup.get(stateKey);
+
+            if (!snapshotRouter) {
+                return;
+            }
+
+            const preferred = snapshotRouter.preferred_interface ?? snapshotRouter.iface ?? '';
+
+            router.preferred_interface = preferred;
+            router.iface = preferred;
+        });
     };
 
     const updateBandwidthCooldown = (routerKey, expiresAtMs) => {
@@ -2274,6 +2373,68 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    const persistInterfaceSelection = async (config) => {
+        const routerKey = config?.routerKey || '';
+        const clientKey = config?.clientKey || '';
+        const routerIp = config?.routerIp || '';
+        const interfaceName = typeof config?.interfaceName === 'string' ? config.interfaceName : '';
+        const previousInterfaceName = typeof config?.previousInterfaceName === 'string'
+            ? config.previousInterfaceName
+            : '';
+
+        if (clientKey === '' && routerIp === '') {
+            return;
+        }
+
+        const payload = {
+            interface: interfaceName,
+        };
+
+        if (clientKey !== '') {
+            payload.client_key = clientKey;
+        }
+
+        if (routerIp !== '') {
+            payload.ip_address = routerIp;
+        }
+
+        try {
+            const response = await fetch('api/router_interface.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            const result = await parseJsonSafe(response);
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || 'Gagal menyimpan pilihan interface.');
+            }
+
+            errorBox.hidden = true;
+
+            if (result.snapshot) {
+                applyRouterClientSnapshot(result.snapshot);
+            }
+
+            fetchLatest();
+        } catch (error) {
+            errorBox.textContent = error.message || 'Gagal menyimpan pilihan interface.';
+            errorBox.hidden = false;
+
+            if (routerKey) {
+                if (previousInterfaceName && previousInterfaceName !== '') {
+                    interfaceSelections.set(routerKey, previousInterfaceName);
+                } else {
+                    interfaceSelections.delete(routerKey);
+                }
+            }
+
+            updateLocalPreferredInterface(routerKey, previousInterfaceName || '', { clientKey, routerIp });
+            renderRouters(state);
+        }
+    };
+
     const deleteRouterClient = async (button) => {
         const clientKey = button.getAttribute('data-client-key') || '';
         const routerIp = button.getAttribute('data-router-ip') || '';
@@ -2587,12 +2748,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const routerKey = select.getAttribute('data-router-key') || '';
+        const row = select.closest('[data-router-key]');
+        const clientKey = row?.getAttribute('data-client-key') || '';
+        const routerIp = row?.getAttribute('data-router-ip') || '';
+        const selectedValue = typeof select.value === 'string' ? select.value : '';
+        const routerState = routerKey ? findRouterStateByKey(routerKey) : null;
+        const previousValue = interfaceSelections.has(routerKey)
+            ? interfaceSelections.get(routerKey)
+            : (routerState?.preferred_interface ?? routerState?.iface ?? '');
 
-        if (routerKey) {
-            interfaceSelections.set(routerKey, select.value);
+        if (errorBox) {
+            errorBox.hidden = true;
         }
 
+        if (routerKey) {
+            interfaceSelections.set(routerKey, selectedValue);
+        }
+
+        updateLocalPreferredInterface(routerKey, selectedValue, { clientKey, routerIp });
         renderRouters(state);
+
+        persistInterfaceSelection({
+            routerKey,
+            clientKey,
+            routerIp,
+            interfaceName: selectedValue,
+            previousInterfaceName: previousValue ?? '',
+        });
     });
 
     routersContainer?.addEventListener('click', (event) => {

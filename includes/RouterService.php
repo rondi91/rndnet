@@ -90,8 +90,26 @@ class RouterService
     {
         $errors = [];
 
+        $name = trim($name);
+        $ipAddress = trim($ipAddress);
+        $username = trim($username);
+        $password = trim($password);
+        $notes = trim($notes);
+
+        if ($username === '') {
+            $username = self::DEFAULT_CLIENT_USERNAME;
+        }
+
+        if ($password === '') {
+            $password = self::DEFAULT_CLIENT_PASSWORD;
+        }
+
+        if ($name === '') {
+            $name = $ipAddress !== '' ? $ipAddress : 'Router PPPoE';
+        }
+
         // Validasi nama router.
-        if (trim($name) === '') {
+        if ($name === '') {
             $errors[] = 'Nama router wajib diisi.';
         }
 
@@ -101,7 +119,7 @@ class RouterService
         }
 
         // Username dan password sederhana.
-        if (trim($username) === '' || trim($password) === '') {
+        if ($username === '' || $password === '') {
             $errors[] = 'Username dan password wajib diisi.';
         }
 
@@ -930,7 +948,7 @@ class RouterService
                     continue;
                 }
 
-                $clients[] = [
+                $entry = [
                     'server_ip' => $serverIp,
                     'server_name' => $serverName,
                     'pppoe_username' => $username,
@@ -945,6 +963,14 @@ class RouterService
                     'comment' => $user['comment'] ?? '',
                     'secret_id' => $user['secret_id'] ?? '',
                 ];
+
+                $entry['client_key'] = $this->normaliseRouterClientKey([
+                    'pppoe_username' => $username,
+                    'server_ip' => $serverIp,
+                    'ip_address' => $entry['address'] ?? '',
+                ]);
+
+                $clients[] = $entry;
             }
 
             foreach ($sessions as $session) {
@@ -983,7 +1009,15 @@ class RouterService
                     'secret_id' => $session['secret_id'] ?? '',
                 ];
 
+                $entry['client_key'] = $this->normaliseRouterClientKey([
+                    'pppoe_username' => $username,
+                    'server_ip' => $serverIp,
+                    'ip_address' => $entry['address'] ?? '',
+                ]);
+
                 if ($existingIndex !== null) {
+                    $existingKey = $clients[$existingIndex]['client_key'] ?? $entry['client_key'];
+                    $entry['client_key'] = $existingKey;
                     $clients[$existingIndex] = array_merge($clients[$existingIndex], $entry);
                 } else {
                     $clients[] = $entry;
@@ -1024,6 +1058,37 @@ class RouterService
             'total_clients' => count($clients),
             'clients' => $clients,
         ];
+    }
+
+    /**
+     * Mencari detail PPPoE berdasarkan identifier normalisasi.
+     */
+    public function findPppoeClientByKey(string $clientKey, bool $refresh = false): ?array
+    {
+        $clientKey = strtolower(trim($clientKey));
+
+        if ($clientKey === '') {
+            return null;
+        }
+
+        $directory = $this->getPppoeClientDirectory($refresh);
+        $clients = $directory['clients'] ?? [];
+
+        foreach ($clients as $client) {
+            if (!is_array($client)) {
+                continue;
+            }
+
+            $key = strtolower((string) ($client['client_key'] ?? $this->normaliseRouterClientKey($client)));
+
+            if ($key === $clientKey) {
+                $client['client_key'] = $key;
+
+                return $client;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1712,8 +1777,42 @@ class RouterService
             return strcasecmp($labelA, $labelB);
         });
 
-        $routers = array_map(function (array $client): array {
+        $routers = $this->buildRouterEntriesFromClients($clients);
+
+        $persistPayload = [
+            'generated_at' => $payload['generated_at'] ?? date('c'),
+            'total_clients' => count($clients),
+            'total_routers' => count($routers),
+            'routers' => $routers,
+        ];
+
+        @file_put_contents(
+            $this->clientStoragePath,
+            json_encode($persistPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+    }
+
+    /**
+     * Membentuk ulang entri router dari daftar klien yang tersimpan.
+     *
+     * @param array<int, array> $clients
+     * @return array<int, array>
+     */
+    private function buildRouterEntriesFromClients(array $clients): array
+    {
+        $routers = [];
+
+        foreach ($clients as $client) {
+            if (!is_array($client)) {
+                continue;
+            }
+
             $ip = trim((string) ($client['ip'] ?? $client['ip_address'] ?? $client['address'] ?? ''));
+
+            if ($ip === '') {
+                continue;
+            }
+
             $username = (string) ($client['user'] ?? $client['username'] ?? self::DEFAULT_CLIENT_USERNAME);
             $password = (string) ($client['pass'] ?? $client['password'] ?? self::DEFAULT_CLIENT_PASSWORD);
             $name = (string) ($client['name'] ?? $client['client_name'] ?? $ip);
@@ -1729,8 +1828,10 @@ class RouterService
                 'client_key' => $client['client_key'] ?? $this->normaliseRouterClientKey($client),
             ];
 
-            if (!empty($iface)) {
+            if ($iface !== '') {
                 $router['preferred_interface'] = $client['preferred_interface'] ?? $iface;
+            } else {
+                unset($router['preferred_interface']);
             }
 
             foreach ([
@@ -1749,8 +1850,8 @@ class RouterService
                 }
             }
 
-            return $router;
-        }, $clients);
+            $routers[] = $router;
+        }
 
         usort($routers, static function (array $a, array $b): int {
             $nameCompare = strcasecmp($a['name'] ?? '', $b['name'] ?? '');
@@ -1762,16 +1863,25 @@ class RouterService
             return strcasecmp($a['ip'] ?? '', $b['ip'] ?? '');
         });
 
-        $persistPayload = [
-            'generated_at' => $payload['generated_at'] ?? date('c'),
-            'total_clients' => count($clients),
-            'total_routers' => count($routers),
-            'routers' => $routers,
-        ];
+        return $routers;
+    }
 
-        @file_put_contents(
-            $this->clientStoragePath,
-            json_encode($persistPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+    /**
+     * Menyelaraskan preferensi interface pada repository utama.
+     */
+    private function repositoryUpdatePreferredInterface(string $ipAddress, string $interfaceName): void
+    {
+        $ipAddress = trim($ipAddress);
+
+        if ($ipAddress === '' || !method_exists($this->repository, 'updatePreferredInterface')) {
+            return;
+        }
+
+        $preferred = trim($interfaceName);
+
+        $this->repository->updatePreferredInterface(
+            $ipAddress,
+            $preferred !== '' ? $preferred : null
         );
     }
 
@@ -1837,6 +1947,10 @@ class RouterService
             $entry['ip_address'] = $entry['address'];
         }
 
+        if (!empty($pppoeData['client_key'])) {
+            $entry['client_key'] = strtolower((string) $pppoeData['client_key']);
+        }
+
         $entryKey = $this->normaliseRouterClientKey($entry);
         $candidateKey = $entryKey;
         $suffix = 1;
@@ -1858,6 +1972,99 @@ class RouterService
         return [
             'success' => true,
             'snapshot' => $snapshot,
+        ];
+    }
+
+    /**
+     * Memperbarui interface pilihan untuk router client yang tersimpan.
+     */
+    public function updateRouterClientPreferredInterface(
+        ?string $clientKey,
+        ?string $ipAddress,
+        string $interfaceName
+    ): array {
+        $clientKey = strtolower(trim((string) ($clientKey ?? '')));
+        $ipAddress = trim((string) ($ipAddress ?? ''));
+        $interfaceName = (string) $interfaceName;
+
+        if ($clientKey === '' && $ipAddress === '') {
+            return [
+                'success' => false,
+                'message' => 'Client key atau alamat IP wajib diisi.',
+            ];
+        }
+
+        $snapshot = $this->readRouterClientStorage();
+        $clients = $snapshot['clients'] ?? [];
+        $matchedIndex = null;
+
+        foreach ($clients as $index => $client) {
+            if (!is_array($client)) {
+                continue;
+            }
+
+            $normalisedKey = strtolower((string) ($client['client_key'] ?? $this->normaliseRouterClientKey($client)));
+            $clientIp = trim((string) ($client['ip_address'] ?? $client['address'] ?? $client['ip'] ?? ''));
+
+            if ($normalisedKey !== '') {
+                $clients[$index]['client_key'] = $normalisedKey;
+            }
+
+            $keyMatches = $clientKey !== '' && $normalisedKey === $clientKey;
+            $ipMatches = !$keyMatches
+                && $clientKey === ''
+                && $ipAddress !== ''
+                && $clientIp !== ''
+                && strcasecmp($clientIp, $ipAddress) === 0;
+
+            if (!$keyMatches && !$ipMatches) {
+                continue;
+            }
+
+            $matchedIndex = $index;
+            $preferred = trim($interfaceName);
+
+            if ($preferred === '') {
+                unset($clients[$index]['preferred_interface'], $clients[$index]['iface']);
+            } else {
+                $clients[$index]['preferred_interface'] = $preferred;
+                $clients[$index]['iface'] = $preferred;
+            }
+
+            $clients[$index]['updated_at'] = date('c');
+
+            if ($ipAddress === '' && $clientIp !== '') {
+                $ipAddress = $clientIp;
+            }
+
+            break;
+        }
+
+        if ($matchedIndex === null) {
+            return [
+                'success' => false,
+                'message' => 'Router client tidak ditemukan.',
+            ];
+        }
+
+        $snapshot['clients'] = $clients;
+        $snapshot['routers'] = $this->buildRouterEntriesFromClients($clients);
+        $snapshot['generated_at'] = date('c');
+        $snapshot['total_clients'] = count($clients);
+        $snapshot['total_routers'] = count($snapshot['routers']);
+
+        $this->writeRouterClientStorage($snapshot);
+
+        if ($ipAddress !== '') {
+            $this->repositoryUpdatePreferredInterface($ipAddress, trim($interfaceName));
+        }
+
+        return [
+            'success' => true,
+            'message' => trim($interfaceName) === ''
+                ? 'Pilihan interface dihapus.'
+                : 'Pilihan interface disimpan.',
+            'snapshot' => $this->readRouterClientStorage(),
         ];
     }
 

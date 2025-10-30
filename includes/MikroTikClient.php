@@ -207,38 +207,116 @@ class MikroTikClient
         }
 
         try {
-            $query = new Query('/interface/ethernet/print');
-            $response = $this->client->query($query)->read();
+            $ethernetQuery = new Query('/interface/ethernet/print');
+            $ethernetResponse = $this->client->query($ethernetQuery)->read();
+
+            $generalResponse = [];
+            $generalError = null;
+
+            try {
+                $generalQuery = new Query('/interface/print');
+                $generalResponse = $this->client->query($generalQuery)->read();
+            } catch (\Throwable $exception) {
+                // Endpoint /interface/print tidak wajib tersedia di seluruh
+                // perangkat (mis. akun dengan hak terbatas). Simpan error
+                // sebagai informasi tambahan namun lanjutkan dengan data
+                // ethernet yang sudah ada.
+                $generalError = $exception->getMessage();
+            }
+
             $this->lastError = null;
+
+            $ethernetMap = [];
+
+            foreach ($ethernetResponse as $row) {
+                $name = trim((string) ($row['name'] ?? ''));
+
+                if ($name === '') {
+                    continue;
+                }
+
+                $ethernetMap[$name] = $row;
+            }
+
+            $generalMap = [];
+            $orderedNames = [];
+
+            foreach ($generalResponse as $row) {
+                $name = trim((string) ($row['name'] ?? ''));
+
+                if ($name === '') {
+                    continue;
+                }
+
+                $generalMap[$name] = $row;
+
+                if (!in_array($name, $orderedNames, true)) {
+                    $orderedNames[] = $name;
+                }
+            }
+
+            foreach ($ethernetMap as $name => $_row) {
+                if (!in_array($name, $orderedNames, true)) {
+                    $orderedNames[] = $name;
+                }
+            }
 
             $interfaces = [];
 
-            foreach ($response as $row) {
-                $name = $row['name'] ?? '';
-                $running = $this->normalizeBoolean($row['running'] ?? null);
-                $disabled = $this->normalizeBoolean($row['disabled'] ?? null);
-                $rxBytes = $this->parseIntegerField($row['rx-byte'] ?? 0);
-                $txBytes = $this->parseIntegerField($row['tx-byte'] ?? 0);
-                $rxPackets = $this->parseIntegerField($row['rx-packet'] ?? 0);
-                $txPackets = $this->parseIntegerField($row['tx-packet'] ?? 0);
-                $rawSpeed = $row['speed'] ?? null;
+            foreach ($orderedNames as $name) {
+                $ethernetRow = $ethernetMap[$name] ?? [];
+                $generalRow = $generalMap[$name] ?? [];
+                $row = $ethernetRow + $generalRow;
+                $fallbackRow = $generalRow + $ethernetRow;
+
+                $displayName = trim((string) ($row['name'] ?? $fallbackRow['name'] ?? $name));
+                $displayName = $displayName !== '' ? $displayName : $name;
+
+                $running = $this->normalizeBoolean($row['running'] ?? $fallbackRow['running'] ?? null);
+                $disabled = $this->normalizeBoolean($row['disabled'] ?? $fallbackRow['disabled'] ?? null);
+                $status = $disabled ? 'disabled' : ($running ? 'running' : 'stopped');
+
+                $rxBytes = $this->parseIntegerField(
+                    $row['rx-byte'] ?? $fallbackRow['rx-byte'] ?? 0
+                );
+                $txBytes = $this->parseIntegerField(
+                    $row['tx-byte'] ?? $fallbackRow['tx-byte'] ?? 0
+                );
+                $rxPackets = $this->parseIntegerField(
+                    $row['rx-packet'] ?? $fallbackRow['rx-packet'] ?? 0
+                );
+                $txPackets = $this->parseIntegerField(
+                    $row['tx-packet'] ?? $fallbackRow['tx-packet'] ?? 0
+                );
+
+                $rawSpeed = $row['speed']
+                    ?? $fallbackRow['speed']
+                    ?? $fallbackRow['actual-data-rate']
+                    ?? null;
                 $speedMbps = $this->parseInterfaceSpeedMbps($rawSpeed);
 
-                $monitor = $this->fetchInterfaceMonitorStats($name);
-                $rxBps = $monitor['rx_bps'] ?? $this->parseBitsPerSecondValue($row['rx-rate'] ?? 0);
-                $txBps = $monitor['tx_bps'] ?? $this->parseBitsPerSecondValue($row['tx-rate'] ?? 0);
-                $rxRateLabel = $monitor['rx_rate_label'] ?? $this->formatBitsPerSecond($rxBps);
-                $txRateLabel = $monitor['tx_rate_label'] ?? $this->formatBitsPerSecond($txBps);
+                $monitor = $this->fetchInterfaceMonitorStats($displayName);
+                $rxBps = $monitor['rx_bps']
+                    ?? $this->parseBitsPerSecondValue($row['rx-rate'] ?? $fallbackRow['rx-rate'] ?? 0);
+                $txBps = $monitor['tx_bps']
+                    ?? $this->parseBitsPerSecondValue($row['tx-rate'] ?? $fallbackRow['tx-rate'] ?? 0);
+
+                $rxRateLabel = $monitor['rx_rate_label']
+                    ?? $this->formatBitsPerSecond($rxBps);
+                $txRateLabel = $monitor['tx_rate_label']
+                    ?? $this->formatBitsPerSecond($txBps);
 
                 $interfaces[] = [
-                    'name' => $name !== '' ? $name : '-',
-                    'mac_address' => $row['mac-address'] ?? '',
+                    'name' => $displayName,
+                    'default_name' => $fallbackRow['default-name'] ?? null,
+                    'mac_address' => $row['mac-address'] ?? $fallbackRow['mac-address'] ?? '',
+                    'type' => $fallbackRow['type'] ?? ($ethernetRow !== [] ? 'ethernet' : null),
                     'running' => $running,
                     'disabled' => $disabled,
-                    'status' => $disabled ? 'disabled' : ($running ? 'running' : 'stopped'),
-                    'mtu' => $row['mtu'] ?? '',
-                    'last_link_up_time' => $row['last-link-up-time'] ?? '',
-                    'link_partner' => $row['link-partner'] ?? '',
+                    'status' => $status,
+                    'mtu' => $row['mtu'] ?? $fallbackRow['mtu'] ?? '',
+                    'last_link_up_time' => $row['last-link-up-time'] ?? $fallbackRow['last-link-up-time'] ?? '',
+                    'link_partner' => $row['link-partner'] ?? $fallbackRow['link-partner'] ?? '',
                     'rx_byte' => $rxBytes,
                     'tx_byte' => $txBytes,
                     'rx_packet' => $rxPackets,
@@ -255,8 +333,12 @@ class MikroTikClient
                     'if_speed_mbps' => $speedMbps,
                     'link_capacity_mbps' => $speedMbps,
                     'if_speed_bps' => $speedMbps !== null ? (int) round($speedMbps * 1_000_000) : null,
-                    'comment' => $row['comment'] ?? '',
+                    'comment' => $row['comment'] ?? $fallbackRow['comment'] ?? '',
                 ];
+            }
+
+            if (!empty($generalError) && empty($interfaces)) {
+                $this->lastError = $generalError;
             }
 
             return [
