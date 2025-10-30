@@ -92,38 +92,14 @@ $trafficData = $service->getEthernetTrafficByRouter();
             </div>
         </div>
         <footer class="modal-footer">
-            <form data-client-form>
-                <div class="form-grid">
-                    <label>
-                        Nama AP
-                        <input type="text" name="name" data-client-name readonly>
-                    </label>
-                    <label>
-                        IP Address
-                        <input type="text" name="ip_address" data-client-address readonly>
-                    </label>
-                    <label>
-                        Username Router
-                        <input type="text" name="username" data-client-username placeholder="admin">
-                    </label>
-                    <label>
-                        Password Router
-                        <input type="password" name="password" data-client-password placeholder="******">
-                    </label>
-                </div>
-                <label>
-                    Catatan
-                    <textarea name="notes" rows="2" data-client-notes placeholder="Contoh: ditambahkan dari PPPoE"></textarea>
-                </label>
-                <label class="checkbox">
-                    <input type="checkbox" name="is_pppoe_server" value="1" data-client-is-server>
-                    Tandai sebagai server PPPoE
-                </label>
-                <div class="modal-footer-actions">
-                    <button type="submit" class="button" data-client-submit disabled>Simpan Router</button>
-                </div>
-                <div class="modal-feedback" data-client-feedback></div>
-            </form>
+            <div class="modal-selection-preview" data-client-preview>
+                <p>Pilih akun PPPoE aktif maupun tidak aktif untuk menambahkan router ke monitoring interface.</p>
+                <p class="hint">Router akan disimpan otomatis dengan kredensial <code>rondi</code> / <code>21184662</code> dan ditandai sebagai server PPPoE.</p>
+            </div>
+            <div class="modal-footer-actions">
+                <button type="button" class="button" data-client-submit disabled>Tambahkan Router</button>
+            </div>
+            <div class="modal-feedback" data-client-feedback></div>
         </footer>
 </div>
 </div>
@@ -209,6 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const openModalButton = document.querySelector('[data-open-client-modal]');
     const clientModal = document.querySelector('[data-client-modal]');
     const closeModalButton = document.querySelector('[data-close-client-modal]');
+    const dashboardLayout = document.querySelector('[data-dashboard]');
     const summaryContainer = document.querySelector('[data-interface-summary]');
     const sourceInfoBox = document.querySelector('[data-interface-source]');
     const routersContainer = document.querySelector('[data-interface-routers]');
@@ -220,13 +197,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const clientListContainer = document.querySelector('[data-client-list]');
     const clientSearchInput = document.querySelector('[data-client-search]');
     const clientSummary = document.querySelector('[data-client-summary]');
-    const clientForm = document.querySelector('[data-client-form]');
-    const clientNameField = document.querySelector('[data-client-name]');
-    const clientAddressField = document.querySelector('[data-client-address]');
-    const clientUsernameField = document.querySelector('[data-client-username]');
-    const clientPasswordField = document.querySelector('[data-client-password]');
-    const clientNotesField = document.querySelector('[data-client-notes]');
-    const clientIsServerField = document.querySelector('[data-client-is-server]');
+    const clientPreview = document.querySelector('[data-client-preview]');
     const clientSubmitButton = document.querySelector('[data-client-submit]');
     const clientFeedback = document.querySelector('[data-client-feedback]');
     const refreshClientButton = document.querySelector('[data-refresh-client-list]');
@@ -275,6 +246,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let manualScaleBps = null;
     let activeBandwidthModalKey = null;
     let bandwidthConfigContext = null;
+    const defaultClientSubmitLabel = clientSubmitButton?.textContent?.trim() || 'Tambahkan Router';
 
     const parseInitialData = () => {
         if (!initialDataElement) {
@@ -408,11 +380,77 @@ document.addEventListener('DOMContentLoaded', () => {
     const ensureBandwidthSettings = (routerKey, defaults = {}) => updateBandwidthSettingsMap(routerKey, defaults);
 
     const buildClientKey = (client) => {
-        const username = String(client?.pppoe_username ?? client?.username ?? '').toLowerCase();
-        const serverIp = String(client?.server_ip ?? '').toLowerCase();
-        const address = String(client?.address ?? client?.client_address ?? '').toLowerCase();
+        if (!client) {
+            return '';
+        }
 
-        return `${serverIp}::${username}::${address}`;
+        const existing = client.client_key ?? client.clientKey;
+
+        if (existing) {
+            return String(existing).toLowerCase();
+        }
+
+        const username = String(client.pppoe_username ?? client.username ?? '').toLowerCase();
+        const serverIp = String(client.server_ip ?? '').toLowerCase();
+        const address = String(client.address ?? client.client_address ?? '').toLowerCase();
+
+        if (username && serverIp) {
+            return `${username}@${serverIp}`;
+        }
+
+        if (username) {
+            return username;
+        }
+
+        if (address) {
+            return address;
+        }
+
+        return String(client.client_name ?? client.comment ?? '').toLowerCase();
+    };
+
+    const buildRouterPayloadFromClient = (client) => {
+        const key = buildClientKey(client);
+        const ipAddress = client?.address
+            ?? client?.client_address
+            ?? client?.ip_address
+            ?? client?.router_ip
+            ?? client?.remote_address
+            ?? '';
+        const serverLabel = client?.server_name || client?.server_ip || '';
+        const baseName = client?.client_name
+            ?? client?.comment
+            ?? client?.pppoe_username
+            ?? client?.username
+            ?? key
+            ?? ipAddress
+            ?? 'Router PPPoE';
+        const notes = serverLabel
+            ? `Ditambahkan dari ${serverLabel}`
+            : 'Ditambahkan dari PPPoE';
+
+        return {
+            name: baseName,
+            ip_address: ipAddress || client?.server_ip || '',
+            username: 'rondi',
+            password: '21184662',
+            notes,
+            is_pppoe_server: 1,
+            client_key: key,
+            pppoe_client: {
+                client_key: key,
+                server_ip: client?.server_ip ?? '',
+                server_name: client?.server_name ?? '',
+                pppoe_username: client?.pppoe_username ?? client?.username ?? '',
+                client_name: client?.client_name ?? client?.comment ?? baseName,
+                profile: client?.profile ?? '',
+                status: client?.status ?? '',
+                address: client?.address ?? client?.client_address ?? '',
+                comment: client?.comment ?? '',
+                last_logged_out: client?.last_logged_out ?? '',
+                secret_id: client?.secret_id ?? '',
+            },
+        };
     };
 
     const formatDateTime = (value) => {
@@ -1360,7 +1398,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const metaLines = [serverLabel, pppoeLabel, noteLabel].filter((line) => line !== '');
         const metaHtml = metaLines.length > 0
-            ? `<div class="router-card-meta">${metaLines.map((line) => `<span>${escapeHtml(line)}</span>`).join('')}</div>`
+            ? `<div class="router-row-meta">${metaLines.map((line) => `<span class="router-row-meta__item">${escapeHtml(line)}</span>`).join('')}</div>`
             : '';
 
         const canDelete = clientKey !== '';
@@ -1472,6 +1510,18 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const deleteButtonHtml = `<button ${deleteButtonAttributes.join(' ')}>Hapus</button>`;
+        const buildIdentityHtml = (badgeHtml) => `
+            <div class="router-row-identity">
+                <div class="router-row-identity-main">
+                    <span class="router-row-name">${escapeHtml(routerName)}</span>
+                    ${badgeHtml || ''}
+                </div>
+                <div class="router-row-identity-sub">
+                    <span class="router-row-ip">${escapeHtml(routerIp || '-')}</span>
+                    ${metaHtml}
+                </div>
+            </div>
+        `;
 
         if (!router.reachable) {
             const error = escapeHtml(router.error || 'Gagal terhubung ke router.');
@@ -1482,12 +1532,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 key: routerKey,
                 markup: `
                     <div class="interface-router-row interface-router-row--error" data-router-ip="${escapeHtml(routerIp)}" data-router-key="${escapeHtml(routerKey)}" data-client-key="${escapeHtml(clientKey)}">
-                        <div class="router-row-identity">
-                            <strong>${escapeHtml(routerName)}</strong>
-                            <span>${escapeHtml(routerIp || '-')}</span>
-                            ${capacityBadgeHtml}
-                            ${metaHtml}
-                        </div>
+                        ${buildIdentityHtml(capacityBadgeHtml)}
                         <div class="router-row-message" role="alert">${error}</div>
                         <div class="router-row-controls router-row-controls--error">
                             <div class="router-row-actions">
@@ -1637,25 +1682,28 @@ document.addEventListener('DOMContentLoaded', () => {
         let scaleLegendHtml = '';
 
         if (manualBaselineBps) {
-            scaleLegendHtml = `<div class="router-row-scale router-row-scale--manual">Skala manual: ${escapeHtml(formatRate(manualBaselineBps))}</div>`;
+            scaleLegendHtml = `<span class="router-row-scale router-row-scale--manual">Skala: ${escapeHtml(formatRate(manualBaselineBps))}</span>`;
         } else if (Number.isFinite(interfaceCapacityMbps) && interfaceCapacityMbps > 0) {
             const capacityLabel = interfaceCapacityMbps >= 100
                 ? interfaceCapacityMbps.toFixed(0)
                 : interfaceCapacityMbps.toFixed(1);
 
-            scaleLegendHtml = `<div class="router-row-scale router-row-scale--capacity">Skala kapasitas: ${escapeHtml(capacityLabel)} Mbps</div>`;
+            scaleLegendHtml = `<span class="router-row-scale router-row-scale--capacity">Skala kapasitas: ${escapeHtml(capacityLabel)} Mbps</span>`;
         } else if (Math.max(fallbackRxBaseline, fallbackTxBaseline) > 0) {
             const dynamicBaseline = Math.max(fallbackRxBaseline, fallbackTxBaseline);
 
-            scaleLegendHtml = `<div class="router-row-scale router-row-scale--dynamic">Skala dinamis: ${escapeHtml(formatRate(dynamicBaseline))} (puncak 5 menit)</div>`;
+            scaleLegendHtml = `<span class="router-row-scale router-row-scale--dynamic">Skala dinamis: ${escapeHtml(formatRate(dynamicBaseline))}</span>`;
         }
 
         const statusClass = selectedInterface ? (statusClassMap[selectedInterface.status] || 'status-chip--warning') : 'status-chip--muted';
         const metricsHtml = selectedInterface
             ? `
                 <div class="router-row-metrics" ${metricsAttributes}>
-                    <div class="router-row-interface-label">Interface: ${escapeHtml(selectedInterface.name)}</div>
-                    <div class="router-row-bars">
+                    <div class="router-row-metrics-header">
+                        <span class="router-row-interface-name">Interface: ${escapeHtml(selectedInterface.name)}</span>
+                        ${scaleLegendHtml}
+                    </div>
+                    <div class="router-row-bars router-row-bars--compact">
                         <div class="router-row-bar-line router-row-bar-line--rx router-row-bar-line--level-${escapeHtml(rxLevel)}">
                             <span class="router-row-bar-label router-row-bar-label--rx router-row-bar-label--level-${escapeHtml(rxLevel)}">${rxLabel}</span>
                             ${buildTrafficBar('rx', rxPercent, rxLevel)}
@@ -1665,10 +1713,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${buildTrafficBar('tx', txPercent, txLevel)}
                         </div>
                     </div>
-                    ${scaleLegendHtml}
                 </div>
             `
             : '<div class="router-row-metrics router-row-metrics--empty">Tidak ada interface ethernet.</div>';
+
+        const identityHtml = buildIdentityHtml(capacityBadgeHtml);
 
         const selectorHtml = availableInterfaces.length > 0
             ? `
@@ -1694,12 +1743,7 @@ document.addEventListener('DOMContentLoaded', () => {
             key: routerKey,
             markup: `
                 <div class="interface-router-row" data-router-ip="${escapeHtml(routerIp)}" data-router-key="${escapeHtml(routerKey)}" data-client-key="${escapeHtml(clientKey)}">
-                    <div class="router-row-identity">
-                        <strong>${escapeHtml(routerName)}</strong>
-                        <span>${escapeHtml(routerIp)}</span>
-                        ${capacityBadgeHtml}
-                        ${metaHtml}
-                    </div>
+                    ${identityHtml}
                     ${metricsHtml}
                     <div class="router-row-controls">
                         ${selectorHtml}
@@ -2283,6 +2327,9 @@ document.addEventListener('DOMContentLoaded', () => {
         clientModal?.classList.add('is-visible');
         clientFeedback.textContent = '';
         clientFeedback.classList.remove('error', 'success');
+        selectedClient = null;
+        selectedClientKey = null;
+        updateClientSelection();
         await loadClients(true);
         requestAnimationFrame(() => {
             clientSearchInput?.focus();
@@ -2293,10 +2340,9 @@ document.addEventListener('DOMContentLoaded', () => {
         clientModal?.setAttribute('hidden', '');
         clientModal?.classList.remove('is-visible');
         selectedClient = null;
-        clientForm?.reset();
         clientFeedback.textContent = '';
         clientFeedback.classList.remove('error', 'success');
-        updateClientForm();
+        updateClientSelection();
     };
 
     const loadClients = async (force = false) => {
@@ -2329,17 +2375,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     selectedClient = null;
                     selectedClientKey = null;
-                    updateClientForm();
+                    updateClientSelection();
                 }
             }
 
-            updateClientForm();
+            updateClientSelection();
             renderClientList();
         } catch (error) {
             clientsState = defaultClientSnapshot();
             renderClientList();
             clientFeedback.textContent = error.message || 'Gagal memuat daftar AP.';
             clientFeedback.classList.add('error');
+            updateClientSelection();
         }
     };
 
@@ -2413,49 +2460,98 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     };
 
-    const updateClientForm = () => {
+    const updateClientSelection = () => {
+        if (!clientPreview) {
+            if (clientSubmitButton) {
+                clientSubmitButton.disabled = !selectedClient;
+            }
+
+            return;
+        }
+
         if (!selectedClient) {
-            clientNameField.value = '';
-            clientAddressField.value = '';
+            clientPreview.innerHTML = `
+                <p>Pilih akun PPPoE aktif maupun tidak aktif untuk menambahkan router ke monitoring interface.</p>
+                <p class="hint">Router akan disimpan otomatis dengan kredensial <code>rondi</code> / <code>21184662</code> dan ditandai sebagai server PPPoE.</p>
+            `;
+
+            if (clientSubmitButton) {
+                clientSubmitButton.disabled = true;
+                clientSubmitButton.textContent = defaultClientSubmitLabel;
+            }
+
             selectedClientKey = null;
-            if (!clientUsernameField.value) {
-                clientUsernameField.value = 'rondi';
-            }
 
-            if (!clientPasswordField.value) {
-                clientPasswordField.value = '21184662';
-            }
-        } else {
-            clientNameField.value = selectedClient.client_name || '';
-            const addressValue = selectedClient.client_address;
-            clientAddressField.value = addressValue && addressValue !== '-' ? addressValue : '';
-            if (!clientNotesField.value) {
-                clientNotesField.value = `Ditambahkan dari ${selectedClient.server_name || selectedClient.server_ip || 'PPPoe'}`;
-            }
-            selectedClientKey = buildClientKey(selectedClient);
+            return;
         }
 
-        if (selectedClient) {
-            if (!clientUsernameField.value) {
-                clientUsernameField.value = 'rondi';
-            }
+        const key = selectedClient.client_key ? String(selectedClient.client_key) : buildClientKey(selectedClient);
+        const usernameLabel = selectedClient.pppoe_username
+            ?? selectedClient.username
+            ?? selectedClient.client_name
+            ?? selectedClient.client_key
+            ?? '-';
+        const displayName = selectedClient.client_name
+            ?? selectedClient.comment
+            ?? usernameLabel;
+        const addressLabel = selectedClient.address
+            ?? selectedClient.client_address
+            ?? selectedClient.ip_address
+            ?? '-';
+        const profileLabel = selectedClient.profile ?? '-';
+        const statusLabel = selectedClient.status === 'active' ? 'Aktif' : 'Tidak aktif';
+        const serverLabel = selectedClient.server_name || selectedClient.server_ip || '-';
 
-            if (!clientPasswordField.value) {
-                clientPasswordField.value = '21184662';
-            }
+        clientPreview.innerHTML = `
+            <p><strong>${escapeHtml(displayName)}</strong> &bull; ${escapeHtml(statusLabel)} &bull; Profil ${escapeHtml(profileLabel)}</p>
+            <p>${escapeHtml(addressLabel)} &bull; Server ${escapeHtml(serverLabel)}</p>
+            <p class="hint">Router akan otomatis menggunakan kredensial <code>rondi</code> / <code>21184662</code>.</p>
+        `;
+
+        selectedClientKey = key;
+
+        if (clientSubmitButton) {
+            clientSubmitButton.disabled = false;
+            clientSubmitButton.textContent = defaultClientSubmitLabel;
+        }
+    };
+
+    let sidebarUserOverridden = false;
+
+    const setSidebarCollapsed = (collapsed, { fromUser = false } = {}) => {
+        if (fromUser) {
+            sidebarUserOverridden = true;
+        } else if (!collapsed) {
+            sidebarUserOverridden = false;
         }
 
-        const usernameFilled = clientUsernameField.value.trim() !== '';
-        const passwordFilled = clientPasswordField.value.trim() !== '';
+        sidebarToggle?.setAttribute('aria-expanded', String(!collapsed));
+        dashboardLayout?.classList.toggle('sidebar-collapsed', collapsed);
+        sidebar?.classList.toggle('collapsed', collapsed);
+    };
 
-        clientSubmitButton.disabled = !(selectedClient && usernameFilled && passwordFilled);
+    const sidebarMediaQuery = window.matchMedia('(max-width: 960px)');
+
+    const handleSidebarMediaChange = () => {
+        if (sidebarUserOverridden) {
+            return;
+        }
+
+        setSidebarCollapsed(sidebarMediaQuery.matches);
     };
 
     sidebarToggle?.addEventListener('click', () => {
-        const isExpanded = sidebarToggle.getAttribute('aria-expanded') === 'true';
-        sidebarToggle.setAttribute('aria-expanded', String(!isExpanded));
-        sidebar?.classList.toggle('collapsed');
+        const currentlyCollapsed = dashboardLayout?.classList.contains('sidebar-collapsed');
+        setSidebarCollapsed(!currentlyCollapsed, { fromUser: true });
     });
+
+    if (sidebarMediaQuery.addEventListener) {
+        sidebarMediaQuery.addEventListener('change', handleSidebarMediaChange);
+    } else if (sidebarMediaQuery.addListener) {
+        sidebarMediaQuery.addListener(handleSidebarMediaChange);
+    }
+
+    handleSidebarMediaChange();
 
     refreshButton?.addEventListener('click', () => {
         fetchLatest();
@@ -2701,47 +2797,25 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedClientKey = key;
         clientFeedback.textContent = '';
         clientFeedback.classList.remove('error', 'success');
-        updateClientForm();
+        updateClientSelection();
         renderClientList();
     });
 
-    clientForm?.addEventListener('input', () => {
-        updateClientForm();
-    });
-
-    clientForm?.addEventListener('submit', async (event) => {
-        event.preventDefault();
-
+    clientSubmitButton?.addEventListener('click', async () => {
         if (!selectedClient) {
-            clientFeedback.textContent = 'Silakan pilih AP terlebih dahulu.';
+            clientFeedback.textContent = 'Silakan pilih PPPoE client terlebih dahulu.';
             clientFeedback.classList.add('error');
 
             return;
         }
 
-        const payload = {
-            name: clientNameField.value,
-            ip_address: clientAddressField.value,
-            username: clientUsernameField.value,
-            password: clientPasswordField.value,
-            notes: clientNotesField.value,
-            is_pppoe_server: clientIsServerField.checked ? 1 : 0,
-            pppoe_client: {
-                server_ip: selectedClient.server_ip ?? '',
-                server_name: selectedClient.server_name ?? '',
-                pppoe_username: selectedClient.pppoe_username ?? selectedClient.username ?? '',
-                client_name: selectedClient.client_name ?? selectedClient.pppoe_username ?? '',
-                profile: selectedClient.profile ?? '',
-                status: selectedClient.status ?? '',
-                address: selectedClient.address ?? selectedClient.client_address ?? '',
-                comment: selectedClient.comment ?? '',
-                last_logged_out: selectedClient.last_logged_out ?? '',
-                secret_id: selectedClient.secret_id ?? '',
-            },
-        };
+        const payload = buildRouterPayloadFromClient(selectedClient);
 
-        if (!payload.ip_address && selectedClient) {
-            payload.ip_address = selectedClient.address ?? selectedClient.client_address ?? '';
+        if (!payload.ip_address || !payload.name) {
+            clientFeedback.textContent = 'Data PPPoE tidak memiliki alamat IP atau nama yang valid.';
+            clientFeedback.classList.add('error');
+
+            return;
         }
 
         clientSubmitButton.disabled = true;
@@ -2770,7 +2844,7 @@ document.addEventListener('DOMContentLoaded', () => {
             clientFeedback.textContent = error.message || 'Gagal menambahkan router.';
             clientFeedback.classList.add('error');
         } finally {
-            clientSubmitButton.textContent = 'Simpan Router';
+            clientSubmitButton.textContent = defaultClientSubmitLabel;
             clientSubmitButton.disabled = false;
         }
     });

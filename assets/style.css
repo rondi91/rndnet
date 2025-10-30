@@ -304,47 +304,68 @@ form input, form textarea, form select {
 .interface-router-container {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    margin-top: 24px;
+    gap: 10px;
+    margin-top: 20px;
 }
 
 .interface-router-row {
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
-    gap: 20px;
-    padding: 16px 20px;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #0f172a, #1f2937);
+    display: grid;
+    grid-template-columns: minmax(180px, 0.3fr) minmax(260px, 1fr) minmax(220px, auto);
+    align-items: center;
+    gap: 16px;
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.92);
     color: #e2e8f0;
-    box-shadow: 0 18px 38px rgba(15, 23, 42, 0.32);
-    flex-wrap: wrap;
-    justify-content: space-between;
+    box-shadow: 0 10px 22px rgba(15, 23, 42, 0.22);
+    border: 1px solid rgba(148, 163, 184, 0.15);
 }
 
 .interface-router-row--error {
     background: linear-gradient(135deg, #31151c, #4a1f29);
+    display: flex;
     flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+}
+
+@media (max-width: 1280px) {
+    .interface-router-row {
+        grid-template-columns: minmax(160px, 0.35fr) minmax(220px, 1fr) minmax(200px, auto);
+    }
 }
 
 .router-row-identity {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    flex: 1 1 260px;
-    min-width: 220px;
-    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
     text-align: left;
 }
 
-.router-row-identity strong {
-    font-size: 1.1rem;
-    color: #f8fafc;
+.router-row-identity-main,
+.router-row-identity-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
 }
 
-.router-row-identity span {
+.router-row-identity-sub {
     color: rgba(226, 232, 240, 0.75);
-    font-size: 0.9rem;
+    font-size: 0.82rem;
+}
+
+.router-row-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #f8fafc;
+    letter-spacing: 0.01em;
+}
+
+.router-row-ip {
+    color: rgba(226, 232, 240, 0.78);
+    font-size: 0.82rem;
 }
 
 .router-row-capacity-badge {
@@ -387,11 +408,9 @@ form input, form textarea, form select {
 .router-row-metrics {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    flex: 1 1 320px;
-    min-width: 240px;
-    align-items: center;
-    text-align: center;
+    gap: 6px;
+    min-width: 0;
+    text-align: left;
 }
 
 .router-row-metrics--empty {
@@ -399,28 +418,43 @@ form input, form textarea, form select {
     font-style: italic;
 }
 
-.router-row-interface-label {
-    font-size: 0.85rem;
-    letter-spacing: 0.02em;
-    color: rgba(148, 163, 184, 0.9);
+.router-row-metrics-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     width: 100%;
+}
+
+.router-row-interface-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: rgba(241, 245, 249, 0.92);
 }
 
 .router-row-bars {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
-    align-items: center;
+    align-items: stretch;
+}
+
+.router-row-bars--compact {
+    flex-direction: row;
+    gap: 12px;
+    align-items: stretch;
 }
 
 .router-row-scale {
-    margin-top: 12px;
-    font-size: 0.75rem;
+    font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: rgba(148, 163, 184, 0.85);
-    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .router-row-scale--manual {
@@ -438,18 +472,18 @@ form input, form textarea, form select {
 .router-row-bar-line {
     display: flex;
     align-items: center;
-    gap: 14px;
-    justify-content: center;
+    gap: 10px;
+    justify-content: flex-start;
     width: 100%;
-    max-width: 380px;
 }
 
 .router-row-bar-label {
-    font-size: 0.85rem;
-    color: rgba(203, 213, 225, 0.85);
+    font-size: 0.78rem;
+    color: rgba(203, 213, 225, 0.82);
     white-space: nowrap;
     text-align: right;
     font-weight: 600;
+    min-width: 84px;
 }
 
 .router-row-bar-label--rx,
@@ -538,12 +572,12 @@ form input, form textarea, form select {
 
 .router-row-selector select {
     min-width: 140px;
-    max-width: 220px;
+    max-width: 200px;
     width: auto;
     background: rgba(15, 23, 42, 0.65);
     border: 1px solid rgba(148, 163, 184, 0.3);
     color: #f1f5f9;
-    flex: 0 1 220px;
+    flex: 0 1 200px;
 }
 
 .router-row-selector .status-chip {
@@ -557,13 +591,13 @@ form input, form textarea, form select {
 
 .router-row-controls {
     display: flex;
-    align-items: flex-end;
-    gap: 16px;
-    margin-left: auto;
-    flex: 0 0 auto;
+    align-items: center;
+    gap: 10px;
     flex-wrap: wrap;
     justify-content: flex-end;
     text-align: right;
+    justify-self: end;
+    min-width: 0;
 }
 
 .router-row-controls--error {
@@ -572,11 +606,9 @@ form input, form textarea, form select {
 
 .router-row-actions {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    align-self: center;
-    width: auto;
-    gap: 12px;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
 }
 
 .router-row-actions .button-danger {
@@ -600,9 +632,9 @@ form input, form textarea, form select {
 }
 
 .router-row-bandwidth-summary {
-    margin-top: 8px;
-    font-size: 0.75rem;
-    color: rgba(148, 163, 184, 0.85);
+    margin-top: 6px;
+    font-size: 0.74rem;
+    color: rgba(148, 163, 184, 0.82);
 }
 
 .bandwidth-control {
@@ -635,9 +667,53 @@ form input, form textarea, form select {
     width: 100%;
 }
 
+.router-bandwidth-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .router-bandwidth-button[aria-busy="true"] {
     opacity: 0.65;
     pointer-events: none;
+}
+
+.button-spinner,
+.bandwidth-status-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(248, 250, 252, 0.4);
+    border-top-color: #f8fafc;
+    border-radius: 50%;
+    display: inline-block;
+    animation: button-spin 0.8s linear infinite;
+}
+
+.button-spinner {
+    margin-right: 6px;
+}
+
+.bandwidth-status-spinner {
+    margin-right: 8px;
+}
+
+.router-bandwidth-button[data-loading="true"] {
+    opacity: 0.75;
+    pointer-events: none;
+}
+
+[data-bandwidth-config-run] .button-spinner {
+    display: none;
+}
+
+[data-bandwidth-config-run][data-loading="true"] .button-spinner {
+    display: inline-block;
+}
+
+@keyframes button-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .router-row-bandwidth {
@@ -648,6 +724,76 @@ form input, form textarea, form select {
     flex: 1 1 100%;
     font-size: 0.82rem;
     color: rgba(226, 232, 240, 0.85);
+}
+
+.bandwidth-chart {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.bandwidth-chart-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: flex-end;
+    font-size: 0.8rem;
+    color: rgba(226, 232, 240, 0.85);
+}
+
+.bandwidth-chart-label {
+    width: 36px;
+    text-align: right;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(148, 163, 184, 0.85);
+}
+
+.bandwidth-chart-value {
+    min-width: 72px;
+    text-align: right;
+    font-size: 0.78rem;
+    color: #f8fafc;
+}
+
+.bandwidth-chart-scale {
+    text-align: right;
+    font-size: 0.72rem;
+    color: rgba(148, 163, 184, 0.7);
+}
+
+.bandwidth-cooldown {
+    font-size: 0.72rem;
+    color: rgba(248, 250, 252, 0.65);
+    text-align: right;
+}
+
+.bandwidth-raw {
+    width: 100%;
+    margin-top: 6px;
+    text-align: right;
+}
+
+.bandwidth-raw > summary {
+    cursor: pointer;
+    font-size: 0.72rem;
+    color: #38bdf8;
+    text-align: right;
+}
+
+.bandwidth-raw pre {
+    margin-top: 6px;
+    padding: 10px 12px;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 10px;
+    color: #f8fafc;
+    font-size: 0.72rem;
+    text-align: left;
+    max-height: 220px;
+    overflow: auto;
 }
 
 .router-row-bandwidth-actions-inline {
@@ -791,19 +937,23 @@ form input, form textarea, form select {
     font-size: 0.9rem;
 }
 
-.router-card-meta {
-    margin-top: 8px;
+.router-row-meta {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
-    font-size: 0.85rem;
-    color: rgba(226, 232, 240, 0.75);
-    align-items: flex-start;
-    text-align: left;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    margin-top: 2px;
 }
 
-.router-card-meta span {
-    display: block;
+.router-row-meta__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    background: rgba(148, 163, 184, 0.18);
+    color: rgba(226, 232, 240, 0.85);
 }
 
 .interface-selector {
@@ -1063,6 +1213,8 @@ form input, form textarea, form select {
     display: flex;
     min-height: 100vh;
     position: relative;
+    width: 100%;
+    overflow-x: hidden;
 }
 
 .sidebar-toggle {
@@ -1099,17 +1251,29 @@ form input, form textarea, form select {
     display: flex;
     flex-direction: column;
     gap: 24px;
-    transition: width 0.3s ease, padding 0.3s ease;
+    transition: width 0.3s ease, padding 0.3s ease, transform 0.3s ease;
     flex-shrink: 0;
     overflow: hidden;
+    transform: translateX(0);
+}
+
+.sidebar.collapsed {
+    transform: translateX(-110%);
+    padding-left: 0;
+    padding-right: 0;
+    box-shadow: none;
+    pointer-events: none;
 }
 
 .sidebar-collapsed .sidebar {
     width: 0;
     padding: 24px 0;
     box-shadow: none;
+    transform: translateX(-110%);
 }
 
+.sidebar.collapsed h2,
+.sidebar.collapsed nav,
 .sidebar-collapsed .sidebar h2,
 .sidebar-collapsed .sidebar nav {
     opacity: 0;
@@ -1782,6 +1946,10 @@ form input, form textarea, form select {
     color: #34d399;
 }
 
+.bandwidth-config-feedback.is-info {
+    color: #93c5fd;
+}
+
 .bandwidth-config-feedback[hidden] {
     display: none;
 }
@@ -2020,6 +2188,40 @@ form input, form textarea, form select {
     resize: vertical;
 }
 
+.modal-selection-preview {
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: rgba(226, 232, 240, 0.9);
+}
+
+.modal-selection-preview p {
+    margin: 0;
+}
+
+.modal-selection-preview p + p {
+    margin-top: 8px;
+}
+
+.modal-selection-preview .hint {
+    display: block;
+    font-size: 0.8rem;
+    color: rgba(148, 163, 184, 0.85);
+}
+
+.modal-selection-preview code {
+    font-family: 'Source Code Pro', 'Fira Code', Menlo, Monaco, Consolas, 'Courier New', monospace;
+    background: rgba(15, 23, 42, 0.9);
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 0.85rem;
+    color: #f8fafc;
+}
+
 .modal-footer-actions {
     display: flex;
     justify-content: flex-end;
@@ -2079,35 +2281,26 @@ form input, form textarea, form select {
     }
 
     .interface-router-row {
-        flex-direction: column;
+        grid-template-columns: 1fr;
         align-items: stretch;
-        gap: 16px;
-    }
-
-    .router-row-identity,
-    .router-row-metrics,
-    .router-card-meta {
-        align-items: flex-start;
-        text-align: left;
-    }
-
-    .router-row-bar-line {
-        justify-content: flex-start;
+        gap: 14px;
     }
 
     .router-row-bar-label {
         text-align: left;
     }
 
+    .router-row-bars--compact {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
     .router-row-controls {
         width: 100%;
         justify-content: space-between;
-    }
-
-    .router-row-actions {
-        justify-content: flex-start;
-        align-items: flex-start;
-        width: 100%;
+        justify-self: stretch;
+        text-align: left;
     }
 
     .router-row-bandwidth {
@@ -2130,9 +2323,41 @@ form input, form textarea, form select {
     .router-row-bandwidth-footer {
         justify-content: flex-start;
     }
+
+    .router-row-actions {
+        justify-content: flex-start;
+        align-items: flex-start;
+        width: 100%;
+    }
+
 }
 
 @media (max-width: 768px) {
+    .dashboard-content {
+        padding: 80px 16px 36px;
+    }
+
+    .interface-content .dashboard-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 18px;
+    }
+
+    .interface-actions {
+        justify-content: flex-start;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .manual-scale-control {
+        width: 100%;
+    }
+
+    .manual-scale-control input {
+        width: 100%;
+        max-width: 160px;
+    }
+
     .pppoe-controls {
         flex-direction: column;
         gap: 12px;
@@ -2146,6 +2371,14 @@ form input, form textarea, form select {
         flex-direction: column;
         align-items: stretch;
         gap: 12px;
+        justify-content: flex-start;
+        text-align: left;
+        justify-self: stretch;
+    }
+
+    .router-row-bars--compact {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .router-row-bandwidth {
@@ -2166,9 +2399,14 @@ form input, form textarea, form select {
         align-items: stretch;
     }
 
+    .router-row-selector select {
+        width: 100%;
+        max-width: none;
+    }
+
     .router-row-actions {
         width: 100%;
-        justify-content: flex-start;
+        justify-content: space-between;
         align-items: stretch;
     }
 
