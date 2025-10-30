@@ -1,4 +1,3 @@
-
 <?php
 // Endpoint sederhana untuk menyediakan data PPPoE dalam format JSON
 // sehingga dashboard dapat menampilkan informasi secara real-time.

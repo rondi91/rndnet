@@ -1,4 +1,3 @@
-
 <?php
 // Endpoint JSON untuk menambahkan router baru melalui permintaan AJAX dari
 // halaman antarmuka.

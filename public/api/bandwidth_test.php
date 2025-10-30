@@ -24,28 +24,10 @@ if (!is_array($data)) {
 $routerIp = trim((string) ($data['router_ip'] ?? ''));
 
 if ($routerIp === '') {
-    $response = json_encode([
+    sendJson([
         'success' => false,
         'message' => 'Parameter router_ip wajib diisi.',
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
-    if (ob_get_length() > 0) {
-        ob_clean();
-    }
-
-    if (!headers_sent()) {
-        header('Content-Type: application/json; charset=UTF-8');
-        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-        http_response_code(400);
-    }
-
-    echo $response;
-
-    if (ob_get_level() > 0) {
-        ob_end_flush();
-    }
-
-    return;
+    ], 400);
 }
 
 $options = [];
@@ -85,36 +67,45 @@ $statusCode = 200;
 $retryAfter = isset($result['retry_after']) ? (int) $result['retry_after'] : 0;
 
 if (empty($result['success'])) {
-    if ($retryAfter > 0) {
-        $statusCode = 429;
+    $statusCode = $retryAfter > 0 ? 429 : 422;
+}
+
+$headers = [];
+
+if ($statusCode === 429 && $retryAfter > 0) {
+    $headers['Retry-After'] = (string) max(1, $retryAfter);
+}
+
+sendJson($result, $statusCode, $headers);
+
+function sendJson(array $payload, int $status = 200, array $extraHeaders = []): void
+{
+    if (ob_get_length() > 0) {
+        ob_clean();
+    }
+
+    if (!headers_sent($file, $line)) {
+        header('Content-Type: application/json; charset=UTF-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+
+        foreach ($extraHeaders as $name => $value) {
+            header($name . ': ' . $value);
+        }
+
+        http_response_code($status);
     } else {
-        $statusCode = 422;
+        error_log(sprintf(
+            'bandwidth_test.php: headers already sent at %s:%d, unable to modify headers',
+            (string) $file,
+            (int) $line
+        ));
     }
-}
 
-$responseBody = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-if (ob_get_length() > 0) {
-    ob_clean();
-}
-
-if (!headers_sent($file, $line)) {
-    header('Content-Type: application/json; charset=UTF-8');
-    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-    if ($statusCode === 429 && $retryAfter > 0) {
-        header('Retry-After: ' . max(1, $retryAfter));
+    if (ob_get_level() > 0) {
+        ob_end_flush();
     }
-    http_response_code($statusCode);
-} else {
-    error_log(sprintf(
-        'bandwidth_test.php: headers already sent at %s:%d, unable to modify headers',
-        (string) $file,
-        (int) $line
-    ));
-}
 
-echo $responseBody;
-
-if (ob_get_level() > 0) {
-    ob_end_flush();
+    exit;
 }

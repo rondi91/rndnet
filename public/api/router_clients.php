@@ -1,4 +1,3 @@
-
 <?php
 // Endpoint JSON untuk mengambil daftar klien router yang tersimpan dari
 // koneksi PPPoE aktif.

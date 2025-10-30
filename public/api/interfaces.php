@@ -1,4 +1,3 @@
-
 <?php
 // Endpoint untuk menyediakan data trafik interface ethernet dalam format JSON.
 

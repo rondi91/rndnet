@@ -1,4 +1,3 @@
-
 <?php
 // Sertakan file yang dibutuhkan agar kelas dapat digunakan.
 require_once __DIR__ . '/../includes/RouterService.php';

@@ -1,4 +1,3 @@
-
 <?php
 // Contoh mandiri untuk menjalankan bandwidth test RouterOS menggunakan
 // pustaka evilfreelancer/routeros-api-php sebagaimana diminta pengguna.

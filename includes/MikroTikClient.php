@@ -1,4 +1,3 @@
-
 <?php
 
 // Muat autoloader Composer jika tersedia agar pustaka RouterOS dapat

@@ -1,4 +1,3 @@
-
 <?php
 // Endpoint JSON untuk menghapus router client dari daftar pemantauan interface.
 
