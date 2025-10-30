@@ -1,24 +1,24 @@
 {
     "172.16.40.28": {
-        "last_started_at": 1761775703,
-        "last_started_at_iso": "2025-10-29T22:08:23+00:00",
-        "next_available_at": 1761775718,
-        "next_available_at_iso": "2025-10-29T22:08:38+00:00",
+        "last_started_at": 1761802468,
+        "last_started_at_iso": "2025-10-30T05:34:28+00:00",
+        "next_available_at": 1761802483,
+        "next_available_at_iso": "2025-10-30T05:34:43+00:00",
         "window_seconds": 15,
         "last_status": "success",
         "last_error": null,
-        "last_completed_at": 1761775713,
-        "last_completed_at_iso": "2025-10-29T22:08:33+00:00",
+        "last_completed_at": 1761802474,
+        "last_completed_at_iso": "2025-10-30T05:34:34+00:00",
         "last_summary": {
-            "tx_current_bps": 44686120,
-            "rx_current_bps": 43689904,
-            "tx_total_average_bps": 44686120,
-            "rx_total_average_bps": 43689904,
-            "tx_peak_bps": 54018880,
-            "rx_peak_bps": 49576288,
-            "direction": "both",
-            "protocol": "TCP",
-            "duration": 10
+            "tx_current_bps": 0,
+            "rx_current_bps": 97573440,
+            "tx_total_average_bps": 0,
+            "rx_total_average_bps": 97573440,
+            "tx_peak_bps": 0,
+            "rx_peak_bps": 97573440,
+            "direction": "rx",
+            "protocol": "UDP",
+            "duration": 5
         }
     },
     "172.16.40.27": {

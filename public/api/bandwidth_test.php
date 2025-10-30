@@ -1,6 +1,9 @@
-
 <?php
+declare(strict_types=1);
+
 // Endpoint untuk menjalankan bandwidth test dari router yang dipilih.
+
+ob_start();
 
 require_once __DIR__ . '/../../includes/RouterService.php';
 
@@ -10,9 +13,6 @@ $service = new RouterService(
     __DIR__ . '/../../data/router_client.json',
     __DIR__ . '/../../data/routers_server.json'
 );
-
-header('Content-Type: application/json; charset=UTF-8');
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
 $input = file_get_contents('php://input');
 $data = json_decode($input, true);
@@ -24,11 +24,26 @@ if (!is_array($data)) {
 $routerIp = trim((string) ($data['router_ip'] ?? ''));
 
 if ($routerIp === '') {
-    http_response_code(400);
-    echo json_encode([
+    $response = json_encode([
         'success' => false,
         'message' => 'Parameter router_ip wajib diisi.',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    if (ob_get_length() > 0) {
+        ob_clean();
+    }
+
+    if (!headers_sent()) {
+        header('Content-Type: application/json; charset=UTF-8');
+        header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+        http_response_code(400);
+    }
+
+    echo $response;
+
+    if (ob_get_level() > 0) {
+        ob_end_flush();
+    }
 
     return;
 }
@@ -66,10 +81,40 @@ if (isset($data['interface'])) {
 
 $result = $service->runBandwidthTestForRouter($routerIp, $options);
 
+$statusCode = 200;
+$retryAfter = isset($result['retry_after']) ? (int) $result['retry_after'] : 0;
+
 if (empty($result['success'])) {
-    http_response_code(422);
-} else {
-    http_response_code(200);
+    if ($retryAfter > 0) {
+        $statusCode = 429;
+    } else {
+        $statusCode = 422;
+    }
 }
 
-echo json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+$responseBody = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+if (ob_get_length() > 0) {
+    ob_clean();
+}
+
+if (!headers_sent($file, $line)) {
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    if ($statusCode === 429 && $retryAfter > 0) {
+        header('Retry-After: ' . max(1, $retryAfter));
+    }
+    http_response_code($statusCode);
+} else {
+    error_log(sprintf(
+        'bandwidth_test.php: headers already sent at %s:%d, unable to modify headers',
+        (string) $file,
+        (int) $line
+    ));
+}
+
+echo $responseBody;
+
+if (ob_get_level() > 0) {
+    ob_end_flush();
+}
