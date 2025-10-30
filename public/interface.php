@@ -1,4 +1,3 @@
-
 <?php
 require_once __DIR__ . '/../includes/RouterService.php';
 
@@ -49,6 +48,10 @@ $trafficData = $service->getEthernetTrafficByRouter();
                     <span>Skala manual (Mbps)</span>
                     <input type="number" min="1" step="1" inputmode="decimal" placeholder="Auto" data-scale-input>
                 </label>
+                <label class="interface-filter-control">
+                    <span>Cari Router</span>
+                    <input type="search" placeholder="Nama, IP, interface..." data-router-filter>
+                </label>
                 <button class="button" type="button" data-open-client-modal>+ Tambah Router AP</button>
                 <button class="refresh-button" type="button" data-refresh-interfaces>Muat Ulang Data</button>
             </div>
@@ -59,6 +62,7 @@ $trafficData = $service->getEthernetTrafficByRouter();
                 <!-- Ringkasan akan dimuat oleh JavaScript -->
             </div>
             <span class="interface-scale-indicator" data-scale-indicator>Skala bar: otomatis</span>
+            <span class="interface-filter-summary" data-router-filter-summary hidden></span>
             <span class="last-updated" data-interface-updated>Terakhir diperbarui: -</span>
         </div>
 
@@ -199,6 +203,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const clientSummary = document.querySelector('[data-client-summary]');
     const clientPreview = document.querySelector('[data-client-preview]');
     const clientSubmitButton = document.querySelector('[data-client-submit]');
+    const routerFilterInput = document.querySelector('[data-router-filter]');
+    const routerFilterSummary = document.querySelector('[data-router-filter-summary]');
     const clientFeedback = document.querySelector('[data-client-feedback]');
     const refreshClientButton = document.querySelector('[data-refresh-client-list]');
     const manualScaleInput = document.querySelector('[data-scale-input]');
@@ -243,6 +249,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const BANDWIDTH_RATE_LIMIT_MS = BANDWIDTH_RATE_LIMIT_SECONDS * 1000;
     const BANDWIDTH_DEFAULT_CAPACITY_MBPS = 100;
     const BANDWIDTH_TIMEOUT_BUFFER_MS = 5000;
+    let routerFilterTerm = '';
     let manualScaleBps = null;
     let activeBandwidthModalKey = null;
     let bandwidthConfigContext = null;
@@ -1481,6 +1488,73 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     };
 
+    const buildRouterSearchContent = (router) => {
+        if (!router || typeof router !== 'object') {
+            return '';
+        }
+
+        const tokens = [];
+        const push = (value) => {
+            if (value === null || value === undefined) {
+                return;
+            }
+
+            const text = String(value).trim();
+
+            if (text !== '') {
+                tokens.push(text.toLowerCase());
+            }
+        };
+
+        push(router.router_name);
+        push(router.router_identity);
+        push(router.identity);
+        push(router.name);
+        push(router.alias);
+        push(router.router_ip);
+        push(router.ip);
+        push(router.ip_address);
+        push(router.router_address);
+        push(router.address);
+        push(router.client_key);
+        push(router.pppoe_username);
+        push(router.pppoe_profile);
+        push(router.profile_name);
+        push(router.server_ip);
+        push(router.server_name);
+        push(router.server_source);
+        push(router.notes);
+        push(router.note);
+        push(router.preferred_interface);
+        push(router.iface);
+
+        if (Array.isArray(router.tags)) {
+            router.tags.forEach((tag) => push(tag));
+        }
+
+        if (Array.isArray(router.interfaces)) {
+            router.interfaces.forEach((item) => {
+                if (!item || typeof item !== 'object') {
+                    return;
+                }
+
+                push(item.name);
+                push(item.comment);
+                push(item.type);
+                push(item.description);
+                push(item.actual_interface);
+            });
+        }
+
+        return tokens.join(' ');
+    };
+
+    const getRouterFilterTokens = () => routerFilterTerm.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+    const applyRouterFilter = () => {
+        renderRouters(state);
+    };
+
     const renderRouter = (router, index) => {
         const interfaces = Array.isArray(router.interfaces) ? router.interfaces : [];
         const routerIp = router.router_ip ?? '';
@@ -1854,19 +1928,61 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderRouters = (data) => {
-        const routers = Array.isArray(data.routers) ? data.routers : [];
+        const routers = Array.isArray(data?.routers) ? data.routers : [];
 
         if (routers.length === 0) {
             routersContainer.innerHTML = '<div class="alert alert-info subtle">Belum ada router client yang tersimpan. Gunakan tombol "Tambah Router AP" untuk memilih PPPoE dan menyimpannya ke router_client.json.</div>';
             interfaceSelections.clear();
+            bandwidthResults.clear();
+            bandwidthSettings.clear();
+            bandwidthCooldowns.clear();
+
+            if (routerFilterSummary) {
+                routerFilterSummary.hidden = true;
+                routerFilterSummary.textContent = '';
+            }
 
             return;
         }
 
-        const rows = routers.map((router, index) => renderRouter(router, index));
-        const activeKeys = new Set(rows.map((row) => row.key));
+        const filterTokens = getRouterFilterTokens();
+        const rows = routers.map((router, index) => ({
+            router,
+            row: renderRouter(router, index),
+            searchContent: buildRouterSearchContent(router),
+        }));
+        const activeKeys = new Set(rows.map((entry) => entry.row.key));
+        const visibleRows = filterTokens.length === 0
+            ? rows
+            : rows.filter((entry) => {
+                if (entry.searchContent === '') {
+                    return false;
+                }
 
-        routersContainer.innerHTML = rows.map((row) => row.markup).join('');
+                return filterTokens.every((token) => entry.searchContent.includes(token));
+            });
+
+        if (routerFilterSummary) {
+            if (filterTokens.length > 0) {
+                routerFilterSummary.hidden = false;
+                routerFilterSummary.textContent = `Filter: menampilkan ${formatInteger(visibleRows.length)} dari ${formatInteger(routers.length)} router`;
+            } else {
+                routerFilterSummary.hidden = true;
+                routerFilterSummary.textContent = '';
+            }
+        }
+
+        const filterLabel = routerFilterTerm.trim() || routerFilterTerm;
+
+        if (visibleRows.length === 0) {
+            if (filterTokens.length === 0) {
+                routersContainer.innerHTML = '<div class="alert alert-info subtle">Belum ada router client yang tersimpan. Gunakan tombol "Tambah Router AP" untuk memilih PPPoE dan menyimpannya ke router_client.json.</div>';
+            } else {
+                routersContainer.innerHTML = `<div class="alert alert-info subtle">Tidak ada router yang cocok dengan filter <strong>${escapeHtml(filterLabel)}</strong>. Gunakan kata kunci lain atau bersihkan filter untuk menampilkan semua router.</div>`;
+            }
+        } else {
+            routersContainer.innerHTML = visibleRows.map((entry) => entry.row.markup).join('');
+        }
 
         bandwidthResults.forEach((_, key) => {
             if (!activeKeys.has(key)) {
@@ -2739,6 +2855,14 @@ document.addEventListener('DOMContentLoaded', () => {
             syncManualScaleFromInput();
         }
     });
+
+    const handleRouterFilterInput = (event) => {
+        routerFilterTerm = event?.target?.value ?? '';
+        applyRouterFilter();
+    };
+
+    routerFilterInput?.addEventListener('input', handleRouterFilterInput);
+    routerFilterInput?.addEventListener('search', handleRouterFilterInput);
 
     routersContainer?.addEventListener('change', (event) => {
         const select = event.target.closest('[data-interface-select]');

@@ -183,6 +183,33 @@ form input, form textarea, form select {
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.interface-filter-control {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #1f2937;
+}
+
+.interface-filter-control input {
+    width: 200px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #d6e1f5;
+    background: #ffffff;
+    color: #1f2937;
+    font-weight: 600;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.interface-filter-control input:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.25);
+}
+
 .manual-scale-control input:focus {
     outline: none;
     border-color: #2563eb;
@@ -256,6 +283,12 @@ form input, form textarea, form select {
     align-items: center;
     gap: 6px;
     white-space: nowrap;
+}
+
+.interface-filter-summary {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1f2937;
 }
 
 .interface-scale-indicator[data-mode="manual"] {
@@ -2381,6 +2414,15 @@ form input, form textarea, form select {
     .manual-scale-control input {
         width: 100%;
         max-width: 160px;
+    }
+
+    .interface-filter-control {
+        width: 100%;
+    }
+
+    .interface-filter-control input {
+        width: 100%;
+        max-width: 220px;
     }
 
     .pppoe-controls {
