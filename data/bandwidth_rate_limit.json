@@ -1,24 +1,24 @@
 {
     "172.16.40.28": {
-        "last_started_at": 1761817421,
-        "last_started_at_iso": "2025-10-30T09:43:41+00:00",
-        "next_available_at": 1761817436,
-        "next_available_at_iso": "2025-10-30T09:43:56+00:00",
+        "last_started_at": 1761823352,
+        "last_started_at_iso": "2025-10-30T11:22:32+00:00",
+        "next_available_at": 1761823367,
+        "next_available_at_iso": "2025-10-30T11:22:47+00:00",
         "window_seconds": 15,
         "last_status": "success",
         "last_error": null,
-        "last_completed_at": 1761817430,
-        "last_completed_at_iso": "2025-10-30T09:43:50+00:00",
+        "last_completed_at": 1761823362,
+        "last_completed_at_iso": "2025-10-30T11:22:42+00:00",
         "last_summary": {
             "tx_current_bps": 0,
-            "rx_current_bps": 93476800,
+            "rx_current_bps": 95085720,
             "tx_total_average_bps": 0,
-            "rx_total_average_bps": 93476800,
+            "rx_total_average_bps": 95085720,
             "tx_peak_bps": 0,
-            "rx_peak_bps": 94376640,
+            "rx_peak_bps": 96768320,
             "direction": "rx",
             "protocol": "UDP",
-            "duration": 8
+            "duration": 10
         }
     },
     "172.16.40.27": {

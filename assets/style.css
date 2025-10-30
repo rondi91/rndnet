@@ -1,4 +1,3 @@
-
 /*
  * File CSS sederhana untuk memberikan tampilan yang rapi.
  */
@@ -310,9 +309,9 @@ form input, form textarea, form select {
 
 .interface-router-row {
     display: grid;
-    grid-template-columns: minmax(180px, 0.3fr) minmax(260px, 1fr) minmax(220px, auto);
-    align-items: center;
-    gap: 16px;
+    grid-template-columns: minmax(200px, 320px) minmax(520px, 1fr) minmax(200px, 280px);
+    align-items: stretch;
+    gap: 14px;
     padding: 12px 16px;
     border-radius: 14px;
     background: rgba(15, 23, 42, 0.92);
@@ -329,9 +328,15 @@ form input, form textarea, form select {
     gap: 12px;
 }
 
+@media (max-width: 1440px) {
+    .interface-router-row {
+        grid-template-columns: minmax(190px, 0.28fr) minmax(460px, 1fr) minmax(190px, 0.3fr);
+    }
+}
+
 @media (max-width: 1280px) {
     .interface-router-row {
-        grid-template-columns: minmax(160px, 0.35fr) minmax(220px, 1fr) minmax(200px, auto);
+        grid-template-columns: minmax(180px, 0.36fr) minmax(360px, 1fr) minmax(180px, 0.34fr);
     }
 }
 
@@ -341,6 +346,8 @@ form input, form textarea, form select {
     gap: 4px;
     min-width: 0;
     text-align: left;
+    align-self: stretch;
+    justify-content: center;
 }
 
 .router-row-identity-main,
@@ -411,6 +418,8 @@ form input, form textarea, form select {
     gap: 6px;
     min-width: 0;
     text-align: left;
+    align-self: stretch;
+    justify-content: center;
 }
 
 .router-row-metrics--empty {
@@ -436,14 +445,15 @@ form input, form textarea, form select {
 .router-row-bars {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     width: 100%;
     align-items: stretch;
+    justify-content: center;
 }
 
 .router-row-bars--compact {
-    flex-direction: row;
-    gap: 12px;
+    flex-direction: column;
+    gap: 8px;
     align-items: stretch;
 }
 
@@ -471,8 +481,9 @@ form input, form textarea, form select {
 
 .router-row-bar-line {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
     justify-content: flex-start;
     width: 100%;
 }
@@ -480,10 +491,10 @@ form input, form textarea, form select {
 .router-row-bar-label {
     font-size: 0.78rem;
     color: rgba(203, 213, 225, 0.82);
-    white-space: nowrap;
-    text-align: right;
+    white-space: normal;
+    text-align: left;
     font-weight: 600;
-    min-width: 84px;
+    display: block;
 }
 
 .router-row-bar-label--rx,
@@ -561,23 +572,25 @@ form input, form textarea, form select {
     background: linear-gradient(90deg, rgba(248, 113, 113, 0.85), #ef4444);
 }
 
+
 .router-row-selector {
     display: flex;
-    flex-direction: row;
-    gap: 8px;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
     min-width: 0;
-    flex-wrap: wrap;
+    width: 100%;
+    align-self: stretch;
+    justify-content: center;
 }
 
 .router-row-selector select {
-    min-width: 140px;
-    max-width: 200px;
-    width: auto;
+    min-width: 0;
+    width: 100%;
+    max-width: 220px;
     background: rgba(15, 23, 42, 0.65);
     border: 1px solid rgba(148, 163, 184, 0.3);
     color: #f1f5f9;
-    flex: 0 1 200px;
 }
 
 .router-row-selector .status-chip {
@@ -591,36 +604,46 @@ form input, form textarea, form select {
 
 .router-row-controls {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 12px;
+    justify-content: flex-start;
     text-align: right;
     justify-self: end;
     min-width: 0;
+    width: 100%;
+    max-width: 240px;
+}
+
+.router-row-controls > * {
+    width: 100%;
 }
 
 .router-row-controls--error {
-    align-items: flex-start;
+    align-items: flex-end;
 }
 
 .router-row-actions {
     display: flex;
-    flex-direction: row;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-end;
     gap: 10px;
+    width: 100%;
 }
 
+.router-row-actions .button,
 .router-row-actions .button-danger {
-    min-width: 88px;
+    width: 100%;
+    min-width: 0;
 }
 
 .router-row-bandwidth-controls {
     display: flex;
+    flex-direction: column;
     align-items: flex-end;
-    justify-content: flex-end;
-    gap: 10px;
-    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
 }
 
 .bandwidth-control-summary {
@@ -719,11 +742,12 @@ form input, form textarea, form select {
 .router-row-bandwidth {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: flex-start;
     gap: 6px;
     flex: 1 1 100%;
     font-size: 0.82rem;
     color: rgba(226, 232, 240, 0.85);
+    text-align: left;
 }
 
 .bandwidth-chart {
@@ -2298,7 +2322,8 @@ form input, form textarea, form select {
 
     .router-row-controls {
         width: 100%;
-        justify-content: space-between;
+        justify-content: flex-start;
+        align-items: stretch;
         justify-self: stretch;
         text-align: left;
     }
