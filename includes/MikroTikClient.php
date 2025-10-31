@@ -196,7 +196,19 @@ class MikroTikClient
     /**
      * Mengambil daftar interface ethernet lengkap dengan informasi trafik.
      */
-    public function getEthernetInterfaces(): array
+    /**
+     * Mengambil daftar interface ethernet (dan interface lain yang relevan)
+     * dari router. Secara bawaan method ini akan mencoba mengambil data
+     * realtime melalui `/interface/monitor-traffic` untuk setiap interface.
+     *
+     * Agar permintaan lebih ringan, panggilan dapat memberikan opsi
+     * `monitor_all => false` dan `monitor_targets => ["ether1", ...]` sehingga
+     * hanya interface tertentu yang diminta data realtime-nya. Ketika opsi
+     * tersebut diberikan dan daftar target kosong, nilai laju akan diambil
+     * dari field standar RouterOS (mis. `rx-rate`) tanpa mengirim perintah
+     * monitor tambahan.
+     */
+    public function getEthernetInterfaces(array $options = []): array
     {
         if (!$this->connect()) {
             return [
@@ -225,6 +237,26 @@ class MikroTikClient
             }
 
             $this->lastError = null;
+
+            $monitorAll = array_key_exists('monitor_all', $options)
+                ? (bool) $options['monitor_all']
+                : true;
+            $monitorTargets = [];
+
+            if (isset($options['monitor_targets']) && is_array($options['monitor_targets'])) {
+                foreach ($options['monitor_targets'] as $targetName) {
+                    $trimmed = trim((string) $targetName);
+
+                    if ($trimmed === '') {
+                        continue;
+                    }
+
+                    $monitorTargets[$trimmed] = true;
+                }
+            }
+
+            $monitorDefaultFirst = !$monitorAll
+                && !empty($options['monitor_default_first']);
 
             $ethernetMap = [];
 
@@ -295,16 +327,15 @@ class MikroTikClient
                     ?? null;
                 $speedMbps = $this->parseInterfaceSpeedMbps($rawSpeed);
 
-                $monitor = $this->fetchInterfaceMonitorStats($displayName);
-                $rxBps = $monitor['rx_bps']
-                    ?? $this->parseBitsPerSecondValue($row['rx-rate'] ?? $fallbackRow['rx-rate'] ?? 0);
-                $txBps = $monitor['tx_bps']
-                    ?? $this->parseBitsPerSecondValue($row['tx-rate'] ?? $fallbackRow['tx-rate'] ?? 0);
+                $rxBps = $this->parseBitsPerSecondValue(
+                    $row['rx-rate'] ?? $fallbackRow['rx-rate'] ?? 0
+                );
+                $txBps = $this->parseBitsPerSecondValue(
+                    $row['tx-rate'] ?? $fallbackRow['tx-rate'] ?? 0
+                );
 
-                $rxRateLabel = $monitor['rx_rate_label']
-                    ?? $this->formatBitsPerSecond($rxBps);
-                $txRateLabel = $monitor['tx_rate_label']
-                    ?? $this->formatBitsPerSecond($txBps);
+                $rxRateLabel = $this->formatBitsPerSecond($rxBps);
+                $txRateLabel = $this->formatBitsPerSecond($txBps);
 
                 $interfaces[] = [
                     'name' => $displayName,
@@ -327,8 +358,10 @@ class MikroTikClient
                     'tx_bps' => $txBps,
                     'rx_mbps' => round($rxBps / 1_000_000, 2),
                     'tx_mbps' => round($txBps / 1_000_000, 2),
-                    'monitor_timestamp' => $monitor['timestamp'] ?? null,
-                    'monitor_error' => $monitor['error'] ?? null,
+                    'monitor_timestamp' => null,
+                    'monitor_error' => null,
+                    'monitor_requested' => $monitorAll || isset($monitorTargets[$displayName]),
+                    'monitor_sampled' => false,
                     'if_speed' => $rawSpeed !== null ? trim((string) $rawSpeed) : null,
                     'if_speed_mbps' => $speedMbps,
                     'link_capacity_mbps' => $speedMbps,
@@ -341,9 +374,56 @@ class MikroTikClient
                 $this->lastError = $generalError;
             }
 
+            if (!$monitorAll && $monitorDefaultFirst && empty($monitorTargets) && !empty($interfaces)) {
+                $firstName = $interfaces[0]['name'] ?? null;
+
+                if ($firstName) {
+                    $monitorTargets[$firstName] = true;
+                }
+            }
+
+            if ($monitorAll || !empty($monitorTargets)) {
+                foreach ($interfaces as $index => $interface) {
+                    $name = $interface['name'] ?? null;
+
+                    if (!$name) {
+                        continue;
+                    }
+
+                    $shouldMonitor = $monitorAll || isset($monitorTargets[$name]);
+
+                    if (!$shouldMonitor) {
+                        continue;
+                    }
+
+                    $monitor = $this->fetchInterfaceMonitorStats($name);
+
+                    $interfaces[$index]['monitor_requested'] = true;
+                    $interfaces[$index]['monitor_timestamp'] = $monitor['timestamp'] ?? null;
+                    $interfaces[$index]['monitor_error'] = $monitor['error'] ?? null;
+                    $interfaces[$index]['monitor_sampled'] = !empty($monitor['success']);
+
+                    if (!empty($monitor['success'])) {
+                        $rxBps = (int) ($monitor['rx_bps'] ?? 0);
+                        $txBps = (int) ($monitor['tx_bps'] ?? 0);
+
+                        $interfaces[$index]['rx_bps'] = $rxBps;
+                        $interfaces[$index]['tx_bps'] = $txBps;
+                        $interfaces[$index]['rx_rate'] = $monitor['rx_rate_label']
+                            ?? $this->formatBitsPerSecond($rxBps);
+                        $interfaces[$index]['tx_rate'] = $monitor['tx_rate_label']
+                            ?? $this->formatBitsPerSecond($txBps);
+                        $interfaces[$index]['rx_mbps'] = round($rxBps / 1_000_000, 2);
+                        $interfaces[$index]['tx_mbps'] = round($txBps / 1_000_000, 2);
+                    }
+                }
+            }
+
             return [
                 'success' => true,
                 'interfaces' => $interfaces,
+                'monitor_all' => $monitorAll,
+                'monitor_targets' => $monitorAll ? array_column($interfaces, 'name') : array_keys($monitorTargets),
             ];
         } catch (\Throwable $exception) {
             $this->lastError = $exception->getMessage();

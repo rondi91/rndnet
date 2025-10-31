@@ -784,6 +784,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const makeHistoryKey = (routerKey, interfaceName) => `${routerKey}::${interfaceName}`;
 
+    const computeRouterKey = (router, index) => {
+        if (router && typeof router === 'object') {
+            const clientKey = router.client_key ?? '';
+
+            if (clientKey) {
+                return String(clientKey);
+            }
+
+            const routerIp = router.router_ip ?? router.ip ?? '';
+
+            if (routerIp) {
+                return String(routerIp);
+            }
+        }
+
+        return `router-${index}`;
+    };
+
+    const escapeSelector = (value) => {
+        const stringValue = String(value ?? '');
+
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+            return window.CSS.escape(stringValue);
+        }
+
+        return stringValue.replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
+    };
+
     const parseJsonSafe = async (response) => {
         const text = await response.text();
         const trimmed = text.trim();
@@ -813,9 +841,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const activeKeys = new Set();
 
         routers.forEach((router, index) => {
-            const routerIp = router?.router_ip ?? '';
-            const clientKey = router?.client_key ?? '';
-            const routerKey = clientKey || (routerIp !== '' ? routerIp : `router-${index}`);
+            const routerKey = computeRouterKey(router, index);
             const interfaces = Array.isArray(router?.interfaces) ? router.interfaces : [];
 
             interfaces.forEach((iface) => {
@@ -1561,7 +1587,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const interfaces = Array.isArray(router.interfaces) ? router.interfaces : [];
         const routerIp = router.router_ip ?? '';
         const clientKey = router.client_key ?? '';
-        const routerKey = clientKey || (routerIp !== '' ? routerIp : `router-${index}`);
+        const routerKey = computeRouterKey(router, index);
         const routerName = router.router_name ?? routerIp ?? 'Router';
         const serverSource = describeServerSource(router.server_source);
         const serverLabel = router.server_ip
@@ -1933,8 +1959,13 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     };
 
-    const renderRouters = (data) => {
+    const renderRouters = (data, options = {}) => {
+        const updateOnly = options.updateOnly === true;
         const routers = Array.isArray(data?.routers) ? data.routers : [];
+
+        if (!routersContainer) {
+            return;
+        }
 
         if (routers.length === 0) {
             routersContainer.innerHTML = '<div class="alert alert-info subtle">Belum ada router client yang tersimpan. Gunakan tombol "Tambah Router AP" untuk memilih PPPoE dan menyimpannya ke router_client.json.</div>';
@@ -1986,6 +2017,41 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 routersContainer.innerHTML = `<div class="alert alert-info subtle">Tidak ada router yang cocok dengan filter <strong>${escapeHtml(filterLabel)}</strong>. Gunakan kata kunci lain atau bersihkan filter untuk menampilkan semua router.</div>`;
             }
+        } else if (updateOnly) {
+            const expectedKeys = visibleRows.map((entry) => entry.row.key);
+            const currentRows = Array.from(routersContainer.querySelectorAll('[data-router-key]'));
+
+            if (currentRows.length !== expectedKeys.length) {
+                renderRouters(data);
+
+                return;
+            }
+
+            let missing = false;
+
+            for (const key of expectedKeys) {
+                const selector = `[data-router-key="${escapeSelector(key)}"]`;
+
+                if (!routersContainer.querySelector(selector)) {
+                    missing = true;
+                    break;
+                }
+            }
+
+            if (missing) {
+                renderRouters(data);
+
+                return;
+            }
+
+            visibleRows.forEach((entry) => {
+                const selector = `[data-router-key="${escapeSelector(entry.row.key)}"]`;
+                const element = routersContainer.querySelector(selector);
+
+                if (element) {
+                    element.outerHTML = entry.row.markup;
+                }
+            });
         } else {
             routersContainer.innerHTML = visibleRows.map((entry) => entry.row.markup).join('');
         }
@@ -2023,22 +2089,66 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const renderAll = (data) => {
-        updateRateHistory(data);
-        state = data;
+    const buildRouterKeyList = (snapshot) => {
+        const routers = Array.isArray(snapshot?.routers) ? snapshot.routers : [];
+
+        return routers.map((router, index) => computeRouterKey(router, index));
+    };
+
+    const hasRouterOrderChanged = (previousState, nextState) => {
+        if (!previousState) {
+            return true;
+        }
+
+        const previousKeys = buildRouterKeyList(previousState);
+        const nextKeys = buildRouterKeyList(nextState);
+
+        if (previousKeys.length !== nextKeys.length) {
+            return true;
+        }
+
+        for (let index = 0; index < nextKeys.length; index += 1) {
+            if (previousKeys[index] !== nextKeys[index]) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    const applyDataUpdate = (data, options = {}) => {
+        const forceFull = options.forceFull === true;
+
+        const nextData = (data && typeof data === 'object') ? data : {};
+
+        updateRateHistory(nextData);
+
+        const requiresFullRender = forceFull || !state || hasRouterOrderChanged(state, nextData);
+
+        state = nextData;
         updateScaleIndicator();
-        renderSummary(data);
-        renderSourceInfo(data);
-        renderRouters(data);
-        const generatedLabel = formatDateTime(data.generated_at);
+        renderSummary(nextData);
+        renderSourceInfo(nextData);
+
+        if (requiresFullRender) {
+            renderRouters(nextData);
+        } else {
+            renderRouters(nextData, { updateOnly: true });
+        }
+
+        const generatedLabel = formatDateTime(nextData.generated_at);
         let updatedText = `Terakhir diperbarui: ${generatedLabel}`;
 
-        if (data.source === 'router_clients' && data.client_snapshot_generated_at) {
-            updatedText += ` • Daftar klien: ${formatDateTime(data.client_snapshot_generated_at)}`;
+        if (nextData.source === 'router_clients' && nextData.client_snapshot_generated_at) {
+            updatedText += ` • Daftar klien: ${formatDateTime(nextData.client_snapshot_generated_at)}`;
         }
 
         lastUpdated.textContent = updatedText;
         errorBox.hidden = true;
+    };
+
+    const renderAll = (data, options = {}) => {
+        applyDataUpdate(data, options);
     };
 
     const fetchLatest = async () => {
@@ -2051,12 +2161,14 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             refreshButton.disabled = true;
             const response = await fetch('api/interfaces.php', { cache: 'no-store' });
+            const data = await parseJsonSafe(response);
 
             if (!response.ok) {
-                throw new Error(`Gagal memuat data (status ${response.status})`);
+                const message = data?.message || `Gagal memuat data (status ${response.status})`;
+
+                throw new Error(message);
             }
 
-            const data = await response.json();
             renderAll(data);
         } catch (error) {
             errorBox.textContent = error.message || 'Gagal memuat data interface.';
@@ -3163,7 +3275,7 @@ document.addEventListener('DOMContentLoaded', () => {
     syncManualScaleFromInput();
 
     const initialData = parseInitialData();
-    renderAll(initialData);
+    renderAll(initialData, { forceFull: true });
     scheduleRefresh(true);
 
 });

@@ -1,4 +1,3 @@
-
 <?php
 require_once __DIR__ . '/RouterRepository.php';
 if (!class_exists('MikroTikClient', false)) {
@@ -413,7 +412,18 @@ class RouterService
                 continue;
             }
 
-            $interfacesResult = $client->getEthernetInterfaces();
+            $preferredInterface = $router['preferred_interface'] ?? ($router['iface'] ?? '');
+            $monitorTargets = [];
+
+            if (is_string($preferredInterface) && trim($preferredInterface) !== '') {
+                $monitorTargets[] = trim($preferredInterface);
+            }
+
+            $interfacesResult = $client->getEthernetInterfaces([
+                'monitor_all' => false,
+                'monitor_targets' => $monitorTargets,
+                'monitor_default_first' => true,
+            ]);
             $interfaces = $interfacesResult['interfaces'] ?? [];
 
             if (!empty($interfacesResult['success'])) {

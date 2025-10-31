@@ -1,24 +1,24 @@
 {
     "172.16.40.28": {
-        "last_started_at": 1761868964,
-        "last_started_at_iso": "2025-10-31T00:02:44+00:00",
-        "next_available_at": 1761868979,
-        "next_available_at_iso": "2025-10-31T00:02:59+00:00",
+        "last_started_at": 1761871127,
+        "last_started_at_iso": "2025-10-31T00:38:47+00:00",
+        "next_available_at": 1761871142,
+        "next_available_at_iso": "2025-10-31T00:39:02+00:00",
         "window_seconds": 15,
         "last_status": "success",
         "last_error": null,
-        "last_completed_at": 1761868970,
-        "last_completed_at_iso": "2025-10-31T00:02:50+00:00",
+        "last_completed_at": 1761871132,
+        "last_completed_at_iso": "2025-10-31T00:38:52+00:00",
         "last_summary": {
             "tx_current_bps": 0,
-            "rx_current_bps": 94601600,
+            "rx_current_bps": 95513280,
             "tx_total_average_bps": 0,
-            "rx_total_average_bps": 94601600,
+            "rx_total_average_bps": 95513280,
             "tx_peak_bps": 0,
-            "rx_peak_bps": 95844800,
+            "rx_peak_bps": 96247360,
             "direction": "rx",
             "protocol": "UDP",
-            "duration": 5
+            "duration": 4
         }
     },
     "172.16.40.27": {
@@ -44,25 +44,25 @@
         }
     },
     "172.16.30.8": {
-        "last_started_at": 1761775837,
-        "last_started_at_iso": "2025-10-29T22:10:37+00:00",
-        "next_available_at": 1761775852,
-        "next_available_at_iso": "2025-10-29T22:10:52+00:00",
+        "last_started_at": 1761871211,
+        "last_started_at_iso": "2025-10-31T00:40:11+00:00",
+        "next_available_at": 1761871226,
+        "next_available_at_iso": "2025-10-31T00:40:26+00:00",
         "window_seconds": 15,
         "last_status": "success",
         "last_error": null,
-        "last_completed_at": 1761775848,
-        "last_completed_at_iso": "2025-10-29T22:10:48+00:00",
+        "last_completed_at": 1761871218,
+        "last_completed_at_iso": "2025-10-31T00:40:18+00:00",
         "last_summary": {
             "tx_current_bps": 0,
-            "rx_current_bps": 81031624,
+            "rx_current_bps": 87930944,
             "tx_total_average_bps": 0,
-            "rx_total_average_bps": 81031624,
+            "rx_total_average_bps": 87930944,
             "tx_peak_bps": 0,
-            "rx_peak_bps": 83692832,
+            "rx_peak_bps": 89794560,
             "direction": "rx",
-            "protocol": "TCP",
-            "duration": 10
+            "protocol": "UDP",
+            "duration": 5
         }
     },
     "172.16.30.18": {
