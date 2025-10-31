@@ -3,7 +3,7 @@ require_once __DIR__ . '/../includes/RouterService.php';
 
 $repository = new RouterRepository(__DIR__ . '/../data/routers.json');
 $service = new RouterService($repository);
-$trafficData = $service->getEthernetTrafficByRouter();
+$bootstrapData = $service->getEthernetTrafficBootstrap();
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -77,7 +77,7 @@ $trafficData = $service->getEthernetTrafficByRouter();
     </section>
 </div>
 
-<script type="application/json" id="interface-initial-data"><?php echo json_encode($trafficData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?></script>
+<script type="application/json" id="interface-initial-data"><?php echo json_encode($bootstrapData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?></script>
 
 <div class="modal-backdrop" data-client-modal hidden>
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="client-modal-title">
@@ -1432,8 +1432,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderSummary = (data) => {
         const totalRouters = data.total_routers ?? 0;
         const totalInterfaces = data.total_interfaces ?? 0;
-        const sourceLabel = data.source === 'router_clients' ? 'router_client.json' : 'daftar router utama';
-        const deviceLabel = data.source === 'router_clients' ? 'router client' : 'router';
+        const sourceKey = typeof data.source === 'string' ? data.source : '';
+        const fromClientSnapshot = sourceKey.startsWith('router_clients');
+        const sourceLabel = fromClientSnapshot ? 'router_client.json' : 'daftar router utama';
+        const deviceLabel = fromClientSnapshot ? 'router client' : 'router';
 
         summaryContainer.innerHTML = `
             Memantau <strong>${escapeHtml(totalInterfaces)}</strong> interface dari
@@ -1868,6 +1870,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const statusClass = selectedInterface ? (statusClassMap[selectedInterface.status] || 'status-chip--warning') : 'status-chip--muted';
+        const placeholderMessage = typeof router.placeholder_message === 'string'
+            ? router.placeholder_message.trim()
+            : '';
+
         const metricsHtml = selectedInterface
             ? `
                 <div class="router-row-metrics" ${metricsAttributes}>
@@ -1887,7 +1893,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
             `
-            : '<div class="router-row-metrics router-row-metrics--empty">Tidak ada interface ethernet.</div>';
+            : `<div class="router-row-metrics router-row-metrics--empty">${escapeHtml(placeholderMessage || 'Tidak ada interface ethernet.')}</div>`;
 
         const identityHtml = buildIdentityHtml(capacityBadgeHtml);
 

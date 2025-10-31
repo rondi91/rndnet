@@ -1,3 +1,4 @@
+
 <?php
 require_once __DIR__ . '/RouterRepository.php';
 if (!class_exists('MikroTikClient', false)) {
@@ -215,35 +216,53 @@ class RouterService
      * Mengambil informasi trafik interface ethernet dari seluruh router yang
      * telah terdaftar.
      */
-    public function getEthernetTrafficByRouter(): array
+    /**
+     * Mengumpulkan entri router yang dibutuhkan untuk monitoring interface.
+     * Metode ini melakukan normalisasi data snapshot agar setiap entri
+     * memiliki struktur yang konsisten untuk dipakai pada berbagai mode
+     * pemuatan data.
+     */
+    private function collectRouterMonitorEntries(): array
     {
         $snapshot = $this->getRouterClientSnapshot();
         $clientEntries = [];
 
         if (isset($snapshot['clients']) && is_array($snapshot['clients'])) {
             foreach ($snapshot['clients'] as $entry) {
+                if (!is_array($entry)) {
+                    continue;
+                }
+
                 $ipAddress = trim((string) ($entry['ip_address'] ?? $entry['client_address'] ?? ''));
 
                 if ($ipAddress === '') {
                     continue;
                 }
 
+                $username = (string) ($entry['username'] ?? self::DEFAULT_CLIENT_USERNAME);
+
                 $clientEntries[] = [
-                    'name' => $entry['name']
+                    'router_name' => $entry['name']
                         ?? $entry['client_name']
                         ?? $entry['pppoe_username']
-                        ?? $entry['username']
+                        ?? $username
                         ?? $ipAddress,
                     'ip_address' => $ipAddress,
-                    'username' => $entry['username'] ?? self::DEFAULT_CLIENT_USERNAME,
-                    'password' => $entry['password'] ?? self::DEFAULT_CLIENT_PASSWORD,
+                    'username' => $username,
+                    'password' => (string) ($entry['password'] ?? self::DEFAULT_CLIENT_PASSWORD),
                     'notes' => $entry['notes'] ?? ($entry['comment'] ?? ''),
                     'pppoe_profile' => $entry['profile'] ?? ($entry['pppoe_profile'] ?? ''),
-                    'pppoe_username' => $entry['pppoe_username'] ?? ($entry['pppoe_user'] ?? $entry['username'] ?? ''),
+                    'pppoe_username' => $entry['pppoe_username'] ?? ($entry['pppoe_user'] ?? ''),
                     'server_ip' => $entry['server_ip'] ?? '',
                     'server_name' => $entry['server_name'] ?? '',
+                    'server_source' => $entry['server_source'] ?? null,
                     'client_key' => $entry['client_key'] ?? $this->normaliseRouterClientKey($entry),
                     'preferred_interface' => $entry['preferred_interface'] ?? ($entry['iface'] ?? ''),
+                    'iface' => $entry['preferred_interface'] ?? ($entry['iface'] ?? ''),
+                    'link_capacity_mbps' => isset($entry['link_capacity_mbps'])
+                        ? (float) $entry['link_capacity_mbps']
+                        : null,
+                    'is_pppoe_server' => $entry['is_pppoe_server'] ?? null,
                 ];
             }
         }
@@ -260,30 +279,92 @@ class RouterService
                     continue;
                 }
 
+                $username = (string) ($entry['user'] ?? $entry['username'] ?? self::DEFAULT_CLIENT_USERNAME);
                 $serverInfo = $this->determineBandwidthServer($ipAddress);
 
                 $clientEntries[] = [
-                    'name' => $entry['name'] ?? $ipAddress,
+                    'router_name' => $entry['name'] ?? $ipAddress,
                     'ip_address' => $ipAddress,
-                    'username' => $entry['user'] ?? $entry['username'] ?? self::DEFAULT_CLIENT_USERNAME,
-                    'password' => $entry['pass'] ?? $entry['password'] ?? self::DEFAULT_CLIENT_PASSWORD,
+                    'username' => $username,
+                    'password' => (string) ($entry['pass'] ?? $entry['password'] ?? self::DEFAULT_CLIENT_PASSWORD),
                     'notes' => $entry['notes'] ?? '',
                     'pppoe_profile' => $entry['profile'] ?? '',
                     'pppoe_username' => $entry['pppoe_username'] ?? '',
-                    'server_ip' => $serverInfo['ip'] ?? ($entry['server_ip'] ?? ''),
-                    'server_name' => $serverInfo['label'] ?? ($entry['server_name'] ?? ''),
-                    'server_source' => $serverInfo['source'] ?? null,
+                    'server_ip' => $entry['server_ip'] ?? ($serverInfo['ip'] ?? ''),
+                    'server_name' => $entry['server_name'] ?? ($serverInfo['label'] ?? ''),
+                    'server_source' => $entry['server_source'] ?? ($serverInfo['source'] ?? null),
                     'client_key' => $entry['client_key'] ?? $this->normaliseRouterClientKey([
                         'ip_address' => $ipAddress,
-                        'username' => $entry['user'] ?? self::DEFAULT_CLIENT_USERNAME,
+                        'username' => $username,
                     ]),
                     'preferred_interface' => $entry['preferred_interface'] ?? ($entry['iface'] ?? ''),
+                    'iface' => $entry['preferred_interface'] ?? ($entry['iface'] ?? ''),
+                    'link_capacity_mbps' => isset($entry['link_capacity_mbps'])
+                        ? (float) $entry['link_capacity_mbps']
+                        : null,
+                    'is_pppoe_server' => $entry['is_pppoe_server'] ?? null,
                 ];
             }
         }
 
         $usingClientSnapshot = count($clientEntries) > 0;
-        $routers = $usingClientSnapshot ? $clientEntries : $this->listRouters();
+        $routerList = $usingClientSnapshot ? $clientEntries : $this->listRouters();
+        $normalised = [];
+
+        foreach ($routerList as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $ipAddress = trim((string) ($entry['ip_address'] ?? $entry['ip'] ?? ''));
+
+            if ($ipAddress === '') {
+                continue;
+            }
+
+            $username = (string) ($entry['username'] ?? $entry['user'] ?? self::DEFAULT_CLIENT_USERNAME);
+            $password = (string) ($entry['password'] ?? $entry['pass'] ?? self::DEFAULT_CLIENT_PASSWORD);
+            $preferredInterface = (string) ($entry['preferred_interface'] ?? $entry['iface'] ?? '');
+
+            $normalised[] = [
+                'router_name' => $entry['router_name'] ?? $entry['name'] ?? $ipAddress,
+                'ip_address' => $ipAddress,
+                'username' => $username,
+                'password' => $password,
+                'notes' => $entry['notes'] ?? ($entry['comment'] ?? ''),
+                'pppoe_profile' => $entry['pppoe_profile'] ?? ($entry['profile'] ?? ''),
+                'pppoe_username' => $entry['pppoe_username'] ?? '',
+                'server_ip' => $entry['server_ip'] ?? '',
+                'server_name' => $entry['server_name'] ?? '',
+                'server_source' => $entry['server_source'] ?? null,
+                'client_key' => $entry['client_key'] ?? $this->normaliseRouterClientKey([
+                    'ip_address' => $ipAddress,
+                    'username' => $username,
+                ]),
+                'preferred_interface' => $preferredInterface,
+                'iface' => $preferredInterface,
+                'link_capacity_mbps' => isset($entry['link_capacity_mbps'])
+                    ? (float) $entry['link_capacity_mbps']
+                    : null,
+                'is_pppoe_server' => $entry['is_pppoe_server'] ?? null,
+                'port' => isset($entry['port']) ? (int) $entry['port'] : null,
+                'timeout' => isset($entry['timeout']) ? (int) $entry['timeout'] : null,
+            ];
+        }
+
+        return [
+            'entries' => $normalised,
+            'using_snapshot' => $usingClientSnapshot,
+            'snapshot' => $snapshot,
+        ];
+    }
+
+    public function getEthernetTrafficByRouter(): array
+    {
+        $collection = $this->collectRouterMonitorEntries();
+        $routers = $collection['entries'];
+        $snapshot = $collection['snapshot'];
+        $usingClientSnapshot = (bool) $collection['using_snapshot'];
         $results = [];
         $timestamp = date('c');
         $totalInterfaces = 0;
@@ -298,33 +379,39 @@ class RouterService
             $serverInfo = $this->determineBandwidthServer($ipAddress);
 
             $clientError = null;
-            $client = $this->makeMikroTikClient($router + ['ip_address' => $ipAddress], $clientError);
+            $client = $this->makeMikroTikClient([
+                'ip_address' => $ipAddress,
+                'username' => $router['username'] ?? self::DEFAULT_CLIENT_USERNAME,
+                'password' => $router['password'] ?? self::DEFAULT_CLIENT_PASSWORD,
+                'port' => $router['port'] ?? null,
+                'timeout' => $router['timeout'] ?? null,
+            ] + $router, $clientError);
 
             if ($client === null) {
                 $results[] = [
-                'router_name' => $router['name'] ?? $router['router_name'] ?? $ipAddress,
-                'router_ip' => $ipAddress,
-                'is_pppoe_server' => $usingClientSnapshot ? false : $this->isPppoeServer($router),
-                'reachable' => false,
-                'error' => $clientError,
-                'interfaces' => [],
-                'last_refreshed' => $timestamp,
-                'notes' => $router['notes'] ?? '',
-                'pppoe_profile' => $router['pppoe_profile'] ?? '',
-                'pppoe_username' => $router['pppoe_username'] ?? '',
-                'server_ip' => $serverInfo['ip'] ?? ($router['server_ip'] ?? ''),
-                'server_name' => $serverInfo['label'] ?? ($router['server_name'] ?? ''),
-                'server_source' => $serverInfo['source'] ?? null,
-                'client_key' => $router['client_key'] ?? null,
-                'preferred_interface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
-                'iface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
-                'link_capacity_mbps' => null,
-                'username' => $router['username'] ?? self::DEFAULT_CLIENT_USERNAME,
-                'password' => $router['password'] ?? self::DEFAULT_CLIENT_PASSWORD,
-            ];
+                    'router_name' => $router['router_name'] ?? $router['name'] ?? $ipAddress,
+                    'router_ip' => $ipAddress,
+                    'is_pppoe_server' => $usingClientSnapshot ? false : $this->isPppoeServer($router),
+                    'reachable' => false,
+                    'error' => $clientError,
+                    'interfaces' => [],
+                    'last_refreshed' => $timestamp,
+                    'notes' => $router['notes'] ?? '',
+                    'pppoe_profile' => $router['pppoe_profile'] ?? '',
+                    'pppoe_username' => $router['pppoe_username'] ?? '',
+                    'server_ip' => $router['server_ip'] ?? ($serverInfo['ip'] ?? ''),
+                    'server_name' => $router['server_name'] ?? ($serverInfo['label'] ?? ''),
+                    'server_source' => $router['server_source'] ?? ($serverInfo['source'] ?? null),
+                    'client_key' => $router['client_key'] ?? null,
+                    'preferred_interface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
+                    'iface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
+                    'link_capacity_mbps' => $router['link_capacity_mbps'] ?? null,
+                    'username' => $router['username'] ?? self::DEFAULT_CLIENT_USERNAME,
+                    'password' => $router['password'] ?? self::DEFAULT_CLIENT_PASSWORD,
+                ];
 
-            continue;
-        }
+                continue;
+            }
 
             $interfacesResult = $client->getEthernetInterfaces();
             $interfaces = $interfacesResult['interfaces'] ?? [];
@@ -334,7 +421,7 @@ class RouterService
             }
 
             $results[] = [
-                'router_name' => $router['name'] ?? $router['router_name'] ?? $ipAddress,
+                'router_name' => $router['router_name'] ?? $router['name'] ?? $ipAddress,
                 'router_ip' => $ipAddress,
                 'is_pppoe_server' => $usingClientSnapshot ? false : $this->isPppoeServer($router),
                 'reachable' => !empty($interfacesResult['success']),
@@ -344,9 +431,9 @@ class RouterService
                 'notes' => $router['notes'] ?? '',
                 'pppoe_profile' => $router['pppoe_profile'] ?? '',
                 'pppoe_username' => $router['pppoe_username'] ?? '',
-                'server_ip' => $serverInfo['ip'] ?? ($router['server_ip'] ?? ''),
-                'server_name' => $serverInfo['label'] ?? ($router['server_name'] ?? ''),
-                'server_source' => $serverInfo['source'] ?? null,
+                'server_ip' => $router['server_ip'] ?? ($serverInfo['ip'] ?? ''),
+                'server_name' => $router['server_name'] ?? ($serverInfo['label'] ?? ''),
+                'server_source' => $router['server_source'] ?? ($serverInfo['source'] ?? null),
                 'client_key' => $router['client_key'] ?? null,
                 'preferred_interface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
                 'iface' => $router['preferred_interface'] ?? ($router['iface'] ?? ''),
@@ -367,6 +454,68 @@ class RouterService
             'source' => $usingClientSnapshot ? 'router_clients' : 'routers',
             'client_snapshot_generated_at' => $snapshot['generated_at'] ?? null,
             'data_files' => $this->describeInterfaceDataFiles($usingClientSnapshot),
+        ];
+    }
+
+    /**
+     * Mengambil data cepat untuk halaman interface tanpa menunggu polling ke
+     * seluruh router. Data ini menampilkan placeholder yang segera diperbarui
+     * melalui permintaan AJAX setelah halaman selesai dimuat.
+     */
+    public function getEthernetTrafficBootstrap(): array
+    {
+        $collection = $this->collectRouterMonitorEntries();
+        $routers = $collection['entries'];
+        $snapshot = $collection['snapshot'];
+        $usingClientSnapshot = (bool) $collection['using_snapshot'];
+        $timestamp = date('c');
+        $results = [];
+        $totalInterfaces = 0;
+
+        foreach ($routers as $router) {
+            $ipAddress = trim((string) ($router['ip_address'] ?? ''));
+
+            if ($ipAddress === '') {
+                continue;
+            }
+
+            $serverInfo = $this->determineBandwidthServer($ipAddress);
+            $preferred = $router['preferred_interface'] ?? ($router['iface'] ?? '');
+
+            $results[] = [
+                'router_name' => $router['router_name'] ?? $router['name'] ?? $ipAddress,
+                'router_ip' => $ipAddress,
+                'is_pppoe_server' => $usingClientSnapshot ? false : $this->isPppoeServer($router),
+                'reachable' => true,
+                'error' => null,
+                'interfaces' => [],
+                'last_refreshed' => $timestamp,
+                'notes' => $router['notes'] ?? '',
+                'pppoe_profile' => $router['pppoe_profile'] ?? '',
+                'pppoe_username' => $router['pppoe_username'] ?? '',
+                'server_ip' => $router['server_ip'] ?? ($serverInfo['ip'] ?? ''),
+                'server_name' => $router['server_name'] ?? ($serverInfo['label'] ?? ''),
+                'server_source' => $router['server_source'] ?? ($serverInfo['source'] ?? null),
+                'client_key' => $router['client_key'] ?? null,
+                'preferred_interface' => $preferred,
+                'iface' => $preferred,
+                'link_capacity_mbps' => $router['link_capacity_mbps'] ?? null,
+                'username' => $router['username'] ?? self::DEFAULT_CLIENT_USERNAME,
+                'password' => $router['password'] ?? self::DEFAULT_CLIENT_PASSWORD,
+                'placeholder' => true,
+                'placeholder_message' => 'Memuat data interface dari router...',
+            ];
+        }
+
+        return [
+            'generated_at' => $timestamp,
+            'total_routers' => count($results),
+            'total_interfaces' => $totalInterfaces,
+            'routers' => $results,
+            'source' => $usingClientSnapshot ? 'router_clients_bootstrap' : 'routers_bootstrap',
+            'client_snapshot_generated_at' => $snapshot['generated_at'] ?? null,
+            'data_files' => $this->describeInterfaceDataFiles($usingClientSnapshot),
+            'placeholder' => true,
         ];
     }
 
